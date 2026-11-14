@@ -12,6 +12,8 @@ import { PaginaMascotas } from '@/features/mascotas/pagina-mascotas';
 import { PaginaRecepcion } from '@/features/recepcion/pagina-recepcion';
 import { PaginaReportes } from '@/features/reportes/pagina-reportes';
 import { PaginaVacunas } from '@/features/vacunas/pagina-vacunas';
+import { PaginaInternacion } from '@/features/internacion/pagina-internacion';
+import { PaginaEstetica } from '@/features/estetica/pagina-estetica';
 import { PaginaMostrador } from '@/features/mostrador/pagina-mostrador';
 import { PaginaProductos } from '@/features/productos/pagina-productos';
 import { PaginaProfesionales } from '@/features/profesionales/pagina-profesionales';
@@ -30,6 +32,8 @@ const router = createHashRouter([
       { path: 'recepcion', element: <PaginaRecepcion /> },
       { path: 'mascotas', element: <PaginaMascotas /> },
       { path: 'vacunas', element: <PaginaVacunas /> },
+      { path: 'internacion', element: <PaginaInternacion /> },
+      { path: 'banos', element: <PaginaEstetica /> },
       { path: 'mostrador', element: <PaginaMostrador /> },
       { path: 'productos', element: <PaginaProductos /> },
       { path: 'profesionales', element: <SoloAdmin><PaginaProfesionales /></SoloAdmin> },

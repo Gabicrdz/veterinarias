@@ -3,6 +3,7 @@ import type { COLORES_PROFESIONAL, ESPECIES, METODOS, ROLES, SEXOS } from './esq
 import type { Franja } from './horarios';
 import type { EstadoTurno } from './agenda';
 import type { EstadoDosis, TipoAplicacion } from './vacunas';
+import type { EstadoEstetica, TipoEstetica } from './servicios';
 import type { CategoriaProducto, EstadoStock, TipoMovimiento, Unidad } from './productos';
 
 export type Respuesta<T> = { ok: true; datos: T } | { ok: false; error: string };
@@ -70,6 +71,63 @@ export interface Veterinaria {
   telefono: string;
   mensajeRecordatorio: string;
   mensajeVacuna: string;
+  mensajeListo: string;
+}
+
+export interface EvolucionInternacion {
+  id: number;
+  momento: string;
+  texto: string;
+  temperaturaC: number | null;
+  usuario: string;
+}
+
+export interface Internacion {
+  id: number;
+  mascotaId: number;
+  mascota: string;
+  especie: Especie;
+  dueno: string;
+  profesional: string | null;
+  ingreso: string;
+  lugar: string;
+  motivo: string;
+  tarifaDiariaCentavos: number;
+  /** Días que se cobran: hasta hoy si sigue internada, hasta el alta si ya se fue. */
+  dias: number;
+  /** Lo que lleva acumulado (internada) o lo que se cobró (alta). */
+  totalCentavos: number;
+  egreso: string | null;
+  metodo: MetodoPago | null;
+  ultimaEvolucion: { momento: string; texto: string; temperaturaC: number | null } | null;
+}
+
+export interface ServicioEstetica {
+  id: number;
+  mascotaId: number;
+  mascota: string;
+  especie: Especie;
+  dueno: string;
+  fecha: string;
+  tipo: TipoEstetica;
+  precioCentavos: number;
+  estado: EstadoEstetica;
+  notas: string;
+  metodo: MetodoPago | null;
+  /** Ya se le avisó al dueño que su mascota está lista. */
+  avisado: boolean;
+  /** El dueño tiene un celular al que se puede escribir por WhatsApp. */
+  tieneWhatsApp: boolean;
+}
+
+export interface TableroEstetica {
+  hoy: string;
+  /** Lo que hay que hacer hoy (o quedó pendiente de días anteriores). */
+  activos: ServicioEstetica[];
+  /** Turnos de baño para días que vienen. */
+  proximos: ServicioEstetica[];
+  entregadosHoy: ServicioEstetica[];
+  cobradoHoyCentavos: number;
 }
 
 export interface Resumen {
@@ -233,6 +291,11 @@ export interface Reporte {
   }[];
   /** Atenciones por especie (cada animal atendido en el período). */
   porEspecie: { especie: Especie; atenciones: number; montoCentavos: number }[];
+  /** Internación y baños cobrados en el período. */
+  servicios: {
+    internacion: { altas: number; dias: number; cobradoCentavos: number };
+    estetica: { entregados: number; cobradoCentavos: number; porTipo: { tipo: TipoEstetica; cantidad: number; centavos: number }[] };
+  };
   porDia: { fecha: string; atendidos: number; ausentes: number; ingresosCentavos: number }[];
   /** Ventas del mostrador (productos) del período, sin contar las anuladas. */
   productos: {

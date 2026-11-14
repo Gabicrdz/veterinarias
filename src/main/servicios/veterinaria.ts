@@ -15,6 +15,7 @@ export function obtenerVeterinaria(db: Lector): Veterinaria {
     telefono: valores.get('telefono') ?? '',
     mensajeRecordatorio: valores.get('mensaje_recordatorio') ?? '',
     mensajeVacuna: valores.get('mensaje_vacuna') ?? '',
+    mensajeListo: valores.get('mensaje_listo') ?? '',
   };
 }
 
@@ -36,6 +37,12 @@ export function guardarMensajeRecordatorio(db: BaseDeDatos, mensaje: string): vo
 export function guardarMensajeVacuna(db: BaseDeDatos, mensaje: string): void {
   db.$client
     .prepare("INSERT INTO configuracion (clave, valor) VALUES ('mensaje_vacuna', ?) ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor")
+    .run(mensaje);
+}
+
+export function guardarMensajeListo(db: BaseDeDatos, mensaje: string): void {
+  db.$client
+    .prepare("INSERT INTO configuracion (clave, valor) VALUES ('mensaje_listo', ?) ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor")
     .run(mensaje);
 }
 

@@ -19,6 +19,8 @@ export const CLAVES = {
   historia: ['historia'],
   vacunas: ['vacunas'],
   productos: ['productos'],
+  internacion: ['internacion'],
+  estetica: ['estetica'],
   ventas: ['ventas'],
   reporte: ['reporte'],
   resumen: ['resumen'],

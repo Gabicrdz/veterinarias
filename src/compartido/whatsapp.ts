@@ -88,3 +88,25 @@ export const armarMensajeVacuna = (plantilla: string, datos: DatosMensajeVacuna)
 export function enlaceWhatsApp(numero: string, mensaje: string): string {
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
 }
+
+// ---- Aviso de "tu mascota ya está lista" (baños y peluquería) ----
+export interface DatosMensajeListo {
+  nombre: string;
+  apellido: string;
+  mascota: string;
+  /** "Baño y corte" */
+  servicio: string;
+  veterinaria: string;
+  direccion: string;
+}
+
+export const MARCADORES_LISTO: { marca: string; explicacion: string }[] = [
+  { marca: '{nombre}', explicacion: 'nombre del dueño' },
+  { marca: '{apellido}', explicacion: 'apellido del dueño' },
+  { marca: '{mascota}', explicacion: 'nombre de la mascota' },
+  { marca: '{servicio}', explicacion: 'Baño y corte' },
+  { marca: '{veterinaria}', explicacion: 'nombre de la veterinaria' },
+  { marca: '{direccion}', explicacion: 'dirección de la veterinaria' },
+];
+
+export const armarMensajeListo = (plantilla: string, datos: DatosMensajeListo) => reemplazarMarcas(plantilla, { ...datos });

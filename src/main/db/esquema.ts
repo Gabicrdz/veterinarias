@@ -220,3 +220,51 @@ export const movimientosStock = sqliteTable('movimientos_stock', {
   anulado: integer('anulado', { mode: 'boolean' }).notNull().default(false),
   creadoEn: text('creado_en').notNull().default(ahora),
 });
+
+export const internaciones = sqliteTable('internaciones', {
+  id: integer('id').primaryKey(),
+  mascotaId: integer('mascota_id')
+    .notNull()
+    .references(() => mascotas.id),
+  profesionalId: integer('profesional_id').references(() => profesionales.id),
+  usuarioId: integer('usuario_id').references(() => usuarios.id),
+  ingreso: text('ingreso').notNull(),
+  motivo: text('motivo').notNull(),
+  lugar: text('lugar').notNull().default(''),
+  tarifaDiariaCentavos: integer('tarifa_diaria_centavos').notNull().default(0),
+  egreso: text('egreso'),
+  totalCentavos: integer('total_centavos'),
+  metodo: text('metodo', { enum: ['efectivo', 'transferencia', 'debito', 'credito'] }),
+  creadoEn: text('creado_en').notNull().default(ahora),
+});
+
+export const evolucionesInternacion = sqliteTable('evoluciones_internacion', {
+  id: integer('id').primaryKey(),
+  internacionId: integer('internacion_id')
+    .notNull()
+    .references(() => internaciones.id),
+  momento: text('momento').notNull(),
+  texto: text('texto').notNull(),
+  temperaturaDecimas: integer('temperatura_decimas'),
+  usuarioId: integer('usuario_id').references(() => usuarios.id),
+  creadoEn: text('creado_en').notNull().default(ahora),
+});
+
+export const serviciosEstetica = sqliteTable('servicios_estetica', {
+  id: integer('id').primaryKey(),
+  mascotaId: integer('mascota_id')
+    .notNull()
+    .references(() => mascotas.id),
+  fecha: text('fecha').notNull(),
+  tipo: text('tipo', { enum: ['bano', 'bano_corte', 'corte', 'unas', 'deslanado'] }).notNull(),
+  precioCentavos: integer('precio_centavos').notNull(),
+  estado: text('estado', { enum: ['esperando', 'en_proceso', 'listo', 'entregado', 'cancelado'] })
+    .notNull()
+    .default('esperando'),
+  notas: text('notas').notNull().default(''),
+  metodo: text('metodo', { enum: ['efectivo', 'transferencia', 'debito', 'credito'] }),
+  avisadoEn: text('avisado_en'),
+  entregadoEn: text('entregado_en'),
+  usuarioId: integer('usuario_id').references(() => usuarios.id),
+  creadoEn: text('creado_en').notNull().default(ahora),
+});

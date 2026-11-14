@@ -6,6 +6,7 @@ import { aMinutos, esHora } from './horarios';
 import { ESTADOS } from './agenda';
 import { TIPOS_APLICACION } from './vacunas';
 import { CATEGORIAS_PRODUCTO, UNIDADES } from './productos';
+import { ESTADOS_ESTETICA, TIPOS_ESTETICA } from './servicios';
 
 export const id = z.number().int().positive();
 const texto = (campo: string, maximo: number) =>
@@ -171,6 +172,7 @@ export const esquemaVeterinaria = z.object({
 
 export const esquemaMensajeRecordatorio = texto('el mensaje del recordatorio', 600);
 export const esquemaMensajeVacuna = texto('el mensaje del aviso de vacuna', 600);
+export const esquemaMensajeListo = texto('el mensaje de "ya está lista"', 600);
 export type DatosVeterinaria = z.input<typeof esquemaVeterinaria>;
 
 // ---------- Turnos ----------
@@ -355,3 +357,53 @@ export const esquemaPeriodo = z
   .refine((r) => r.desde <= r.hasta, { message: '"Hasta" no puede ser antes que "desde".' })
   .refine((r) => (Date.parse(r.hasta) - Date.parse(r.desde)) / 86_400_000 <= 366, { message: 'El período puede ser de hasta un año.' });
 export type DatosPeriodo = z.input<typeof esquemaPeriodo>;
+
+// ---------- Internación ----------
+export const esquemaIngreso = z.object({
+  mascotaId: id,
+  motivo: texto('el motivo de la internación', 200),
+  /** Jaula o lugar: "Jaula 3", "Sala de observación". */
+  lugar: textoOpcional(40),
+  profesionalId: id.nullable().default(null),
+  /** Lo que se cobra por día de internación, en centavos (0 = sin cargo). */
+  tarifaDiariaCentavos: z.number({ error: 'La tarifa no es válida.' }).int().min(0, 'La tarifa no puede ser negativa.').max(100_000_000, 'La tarifa es demasiado alta.').default(0),
+});
+export type DatosIngreso = z.input<typeof esquemaIngreso>;
+
+export const esquemaEvolucion = z.object({
+  internacionId: id,
+  texto: texto('cómo está el paciente', 600),
+  /** Grados (38,5). Vacío = no se tomó. */
+  temperaturaC: z
+    .number({ error: 'La temperatura no es válida.' })
+    .min(30, 'La temperatura tiene que estar entre 30 y 45 °C.')
+    .max(45, 'La temperatura tiene que estar entre 30 y 45 °C.')
+    .nullable()
+    .default(null),
+});
+export type DatosEvolucion = z.input<typeof esquemaEvolucion>;
+
+export const esquemaAlta = z.object({
+  internacionId: id,
+  /** Obligatoria solo si hay algo para cobrar: lo controla el servicio. */
+  metodo: z.enum(METODOS).nullable().default(null),
+});
+export type DatosAlta = z.input<typeof esquemaAlta>;
+
+// ---------- Baños y peluquería ----------
+export const esquemaServicioEstetica = z.object({
+  mascotaId: id,
+  fecha: esquemaFecha,
+  tipo: z.enum(TIPOS_ESTETICA, { message: 'Elegí el servicio.' }),
+  precioCentavos: z.number({ error: 'El precio no es válido.' }).int().min(0, 'El precio no puede ser negativo.').max(100_000_000, 'El precio es demasiado alto.'),
+  notas: textoOpcional(200),
+});
+export type DatosServicioEstetica = z.input<typeof esquemaServicioEstetica>;
+
+export const esquemaCambioEstetica = z.object({
+  id,
+  estado: z.enum(ESTADOS_ESTETICA),
+  /** Al entregar: cómo pagó (obligatoria si el precio es mayor que cero). */
+  metodo: z.enum(METODOS).nullable().default(null),
+});
+export type DatosCambioEstetica = z.input<typeof esquemaCambioEstetica>;

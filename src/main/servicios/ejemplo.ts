@@ -19,6 +19,10 @@ import { listarProfesionales } from './profesionales';
 import { esquemaProducto, esquemaVenta } from '@compartido/esquemas';
 import { guardarProducto, obtenerProducto } from './productos';
 import { registrarVenta } from './ventas';
+import { esquemaAlta, esquemaCambioEstetica, esquemaEvolucion, esquemaIngreso, esquemaServicioEstetica } from '@compartido/esquemas';
+import type { TipoEstetica } from '@compartido/servicios';
+import { agregarEvolucion, darAlta, ingresarMascota } from './internacion';
+import { cambiarEstadoServicio, crearServicio } from './estetica';
 
 const dias = (lista: number[], desde: string, hasta: string) => lista.map((diaSemana) => ({ diaSemana, desde, hasta }));
 
@@ -125,6 +129,7 @@ export function cargarEjemplo(db: BaseDeDatos, ahora: Date = new Date()): Result
     }
     cargarVacunasEjemplo(db, ahora);
     cargarProductosEjemplo(db, ahora);
+    cargarServiciosEjemplo(db, ahora);
     const creados = hayProfesionales ? [] : crearUsuariosEjemplo(db);
     // Los turnos, solo con los veterinarios de ejemplo (de los propios no conocemos el horario real)
     if (!hayProfesionales) cargarTurnosEjemplo(db, ahora);
@@ -375,4 +380,103 @@ export function cargarProductosEjemplo(db: BaseDeDatos, ahora: Date = new Date()
     }
   })();
   return (db.$client.prepare('SELECT count(*) AS n FROM ventas').get() as { n: number }).n;
+}
+
+// ── Internación y baños ──
+const PRECIOS_ESTETICA: Record<TipoEstetica, number> = { bano: 12000, bano_corte: 18000, corte: 15000, unas: 4000, deslanado: 22000 };
+const TIPOS_FRECUENTES: TipoEstetica[] = ['bano', 'bano', 'bano', 'bano_corte', 'bano_corte', 'corte', 'unas', 'deslanado'];
+const MOTIVOS_INTERNACION = [
+  ['Gastroenteritis, suero y control', 'Jaula 2'],
+  ['Postoperatorio de castración', 'Jaula 5'],
+  ['Observación por golpe de calor', 'Sala de observación'],
+  ['Fractura de pata: reposo y analgesia', 'Jaula 1'],
+  ['Parvovirus: tratamiento intensivo', 'Aislamiento'],
+  ['Cuadro respiratorio, nebulizaciones', 'Jaula 4'],
+] as const;
+const NOTAS_EVOLUCION = [
+  'Ingresa decaído, con vómitos. Se coloca suero y se inicia medicación.',
+  'Pasó la noche tranquilo. Come un poco de alimento blando.',
+  'Mejor ánimo, sin vómitos. Se mantiene el suero.',
+  'Come solo y camina con ganas. Se evalúa el alta para mañana.',
+  'Herida limpia, sin secreción. Descansa bien.',
+  'Responde bien al tratamiento, baja la fiebre.',
+];
+
+/** Internaciones (algunas en curso y otras ya dadas de alta) y baños de ejemplo: de hoy, de los últimos días y próximos. */
+export function cargarServiciosEjemplo(db: BaseDeDatos, ahora: Date = new Date()): number {
+  const hay = (t: string) => (db.$client.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n > 0;
+  if (hay('internaciones') || hay('servicios_estetica')) throw new ErrorDeUsuario('Ya hay internaciones o baños cargados: los de ejemplo son solo para empezar de cero.');
+  const mascotas = (db.$client.prepare(`SELECT id FROM mascotas WHERE activo = 1 AND especie IN ('perro', 'gato') ORDER BY id`).all() as { id: number }[]).map((m) => m.id);
+  if (mascotas.length < 12) throw new ErrorDeUsuario('Primero cargá mascotas (perros o gatos).');
+  const usuario = db.$client.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' AND activo = 1 ORDER BY id LIMIT 1`).get() as { id: number } | undefined;
+  const vet = db.$client.prepare('SELECT id FROM profesionales WHERE activo = 1 ORDER BY id').all() as { id: number }[];
+  const dia = (desp: number, hora: number, minuto = 0) => new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + desp, hora, minuto);
+  const fechaDe = (desp: number) => fechaLocal(dia(desp, 12));
+  const u = usuario ?? null;
+  const r = azar(2028);
+  let cargados = 0;
+
+  db.$client.transaction(() => {
+    // Internación: 3 en curso y 5 que ya se fueron en los últimos días
+    const plan: { atras: number; dias: number | null }[] = [
+      { atras: 4, dias: null }, { atras: 2, dias: null }, { atras: 0, dias: null },
+      { atras: 13, dias: 3 }, { atras: 11, dias: 2 }, { atras: 9, dias: 4 }, { atras: 7, dias: 1 }, { atras: 5, dias: 2 },
+    ];
+    plan.forEach((p, k) => {
+      const [motivo, lugar] = MOTIVOS_INTERNACION[k % MOTIVOS_INTERNACION.length]!;
+      const llegada = dia(-p.atras, 10, 15);
+      const id = ingresarMascota(
+        db,
+        esquemaIngreso.parse({ mascotaId: mascotas[k * 3 + 1]!, motivo, lugar, profesionalId: vet.length ? vet[k % vet.length]!.id : null, tarifaDiariaCentavos: 1_500_000 }),
+        u,
+        llegada,
+      );
+      const notas = p.dias === null ? p.atras + 1 : p.dias + 1;
+      for (let n = 0; n < Math.min(notas, 4); n++) {
+        const cuando = dia(-p.atras + Math.floor((n * (p.atras || 1)) / Math.max(1, notas)), 10 + (n % 2) * 6, 30);
+        if (cuando > ahora) continue;
+        agregarEvolucion(
+          db,
+          esquemaEvolucion.parse({ internacionId: id, texto: NOTAS_EVOLUCION[(k + n) % NOTAS_EVOLUCION.length]!, temperaturaC: n % 3 === 2 ? null : Math.round((38.2 + r() * 1.6) * 10) / 10 }),
+          u,
+          cuando,
+        );
+      }
+      if (p.dias !== null) darAlta(db, esquemaAlta.parse({ internacionId: id, metodo: 'efectivo' }), dia(-p.atras + p.dias, 11, 0));
+      cargados++;
+    });
+
+    // Baños: los últimos 14 días ya entregados (para el reporte) y el tablero de hoy
+    const nueva = (atras: number, hora: number, tipo: TipoEstetica, mascotaId: number, desp = 0) =>
+      crearServicio(db, esquemaServicioEstetica.parse({ mascotaId, fecha: fechaDe(desp), tipo, precioCentavos: PRECIOS_ESTETICA[tipo] * 100, notas: '' }), u, dia(-atras, hora));
+    const pasar = (id: number, estado: 'en_proceso' | 'listo' | 'entregado', cuando: Date) =>
+      cambiarEstadoServicio(db, esquemaCambioEstetica.parse({ id, estado, metodo: estado === 'entregado' ? (r() < 0.6 ? 'efectivo' : 'transferencia') : null }), cuando);
+    for (let atras = 14; atras >= 1; atras--) {
+      for (let n = 0, cuantos = 2 + Math.floor(r() * 3); n < cuantos; n++) {
+        const hora = 9 + n * 2;
+        const id = nueva(atras, hora, TIPOS_FRECUENTES[Math.floor(r() * TIPOS_FRECUENTES.length)]!, mascotas[Math.floor(r() * mascotas.length)]!);
+        pasar(id, 'en_proceso', dia(-atras, hora, 20));
+        pasar(id, 'listo', dia(-atras, hora + 1, 20));
+        pasar(id, 'entregado', dia(-atras, hora + 2, 0));
+        cargados++;
+      }
+    }
+    // Hoy: 3 ya entregados, 2 listos (uno ya avisado), 1 en proceso, 2 esperando; y 2 turnos para los próximos días
+    const hoyTipos: [TipoEstetica, number][] = [['bano', 20], ['bano_corte', 21], ['unas', 22], ['bano', 23], ['corte', 24], ['deslanado', 25], ['bano', 26], ['bano_corte', 27]];
+    const ids = hoyTipos.map(([tipo, k]) => nueva(0, 8, tipo, mascotas[k]!));
+    const estados: ('entregado' | 'entregado' | 'entregado' | 'listo' | 'listo' | 'en_proceso' | 'esperando' | 'esperando')[] = ['entregado', 'entregado', 'entregado', 'listo', 'listo', 'en_proceso', 'esperando', 'esperando'];
+    ids.forEach((id, k) => {
+      const e = estados[k]!;
+      if (e === 'esperando') return;
+      pasar(id, 'en_proceso', ahora);
+      if (e === 'en_proceso') return;
+      pasar(id, 'listo', ahora);
+      if (e === 'entregado') pasar(id, 'entregado', ahora);
+    });
+    db.$client.prepare('UPDATE servicios_estetica SET avisado_en = ? WHERE id = ?').run(`${fechaDe(0)} 09:00:00`, ids[3]!);
+    nueva(0, 8, 'bano', mascotas[28]!, 1);
+    nueva(0, 8, 'bano_corte', mascotas[29]!, 2);
+    cargados += ids.length + 2;
+  })();
+  return cargados;
 }

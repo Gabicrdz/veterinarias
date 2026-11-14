@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { NOMBRE_ESPECIE, NOMBRE_METODO, type DatosPeriodo } from '@compartido/esquemas';
 import { pesos } from '@compartido/dinero';
 import { cantidadConUnidad } from '@compartido/productos';
+import { NOMBRE_ESTETICA } from '@compartido/servicios';
 import type { Reporte } from '@compartido/tipos';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -218,6 +219,40 @@ function Contenido({ r, periodo }: { r: Reporte; periodo: DatosPeriodo }) {
             </div>
           </div>
         )}
+      </Seccion>
+
+      <Seccion titulo="Internación y baños" descripcion="Internaciones dadas de alta en el período (por día de alta) y baños o cortes entregados.">
+        <div className="grid grid-cols-2 gap-8">
+          <dl className="flex flex-col gap-3">
+            <h3 className="text-[13px] font-medium text-tinta-suave">Internación</h3>
+            <div>
+              <dd className="numeros font-display text-[28px] leading-none font-semibold">{pesosCortos(r.servicios.internacion.cobradoCentavos)}</dd>
+              <dd className="mt-1 text-[13px] text-tinta-suave">
+                {r.servicios.internacion.altas} {r.servicios.internacion.altas === 1 ? 'alta' : 'altas'} · {r.servicios.internacion.dias} {r.servicios.internacion.dias === 1 ? 'día' : 'días'} de internación
+              </dd>
+            </div>
+          </dl>
+          <div>
+            <h3 className="mb-2 text-[13px] font-medium text-tinta-suave">Baños y peluquería</h3>
+            {r.servicios.estetica.entregados === 0 ? (
+              <p className="text-[14px] text-tinta-suave">No se entregó ningún baño en este período.</p>
+            ) : (
+              <>
+                <p className="numeros font-display text-[28px] leading-none font-semibold">{pesosCortos(r.servicios.estetica.cobradoCentavos)}</p>
+                <p className="mt-1 mb-2 text-[13px] text-tinta-suave">{r.servicios.estetica.entregados} entregados</p>
+                <ul className="divide-y divide-linea">
+                  {r.servicios.estetica.porTipo.map((t) => (
+                    <li key={t.tipo} className="flex items-center gap-3 py-2">
+                      <span className="min-w-0 flex-1 font-semibold">{NOMBRE_ESTETICA[t.tipo]}</span>
+                      <span className="numeros w-12 text-right text-[14px] text-tinta-suave">{t.cantidad}</span>
+                      <span className="numeros w-28 text-right text-[14px]">{pesos(t.centavos)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        </div>
       </Seccion>
 
       <div className="grid grid-cols-[1.5fr_1fr] gap-5">

@@ -328,4 +328,61 @@ export const MIGRACIONES: Migracion[] = [
       CREATE INDEX movimientos_por_venta ON movimientos_stock (venta_id) WHERE venta_id IS NOT NULL;
     `,
   },
+  {
+    nombre: 'Internación y baños/peluquería',
+    sql: /* sql */ `
+      -- Una mascota internada tiene egreso NULL; al darla de alta se guardan el egreso y lo cobrado.
+      CREATE TABLE internaciones (
+        id                     INTEGER PRIMARY KEY,
+        mascota_id             INTEGER NOT NULL REFERENCES mascotas (id),
+        profesional_id         INTEGER REFERENCES profesionales (id),
+        usuario_id             INTEGER REFERENCES usuarios (id),
+        ingreso                TEXT    NOT NULL,
+        motivo                 TEXT    NOT NULL,
+        lugar                  TEXT    NOT NULL DEFAULT '',
+        tarifa_diaria_centavos INTEGER NOT NULL DEFAULT 0 CHECK (tarifa_diaria_centavos >= 0),
+        egreso                 TEXT,
+        total_centavos         INTEGER CHECK (total_centavos IS NULL OR total_centavos >= 0),
+        metodo                 TEXT    CHECK (metodo IS NULL OR metodo IN ('efectivo', 'transferencia', 'debito', 'credito')),
+        creado_en              TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+        CHECK ((egreso IS NULL) = (total_centavos IS NULL)),
+        CHECK (egreso IS NULL OR egreso >= ingreso)
+      );
+      -- Una mascota no puede estar internada dos veces a la vez
+      CREATE UNIQUE INDEX internacion_una_activa ON internaciones (mascota_id) WHERE egreso IS NULL;
+      CREATE INDEX internaciones_por_egreso ON internaciones (egreso);
+
+      CREATE TABLE evoluciones_internacion (
+        id                 INTEGER PRIMARY KEY,
+        internacion_id     INTEGER NOT NULL REFERENCES internaciones (id),
+        momento            TEXT    NOT NULL,
+        texto              TEXT    NOT NULL,
+        temperatura_decimas INTEGER CHECK (temperatura_decimas IS NULL OR temperatura_decimas BETWEEN 300 AND 450),
+        usuario_id         INTEGER REFERENCES usuarios (id),
+        creado_en          TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      CREATE INDEX evoluciones_por_internacion ON evoluciones_internacion (internacion_id, momento);
+
+      CREATE TABLE servicios_estetica (
+        id              INTEGER PRIMARY KEY,
+        mascota_id      INTEGER NOT NULL REFERENCES mascotas (id),
+        fecha           TEXT    NOT NULL,
+        tipo            TEXT    NOT NULL CHECK (tipo IN ('bano', 'bano_corte', 'corte', 'unas', 'deslanado')),
+        precio_centavos INTEGER NOT NULL CHECK (precio_centavos >= 0),
+        estado          TEXT    NOT NULL DEFAULT 'esperando' CHECK (estado IN ('esperando', 'en_proceso', 'listo', 'entregado', 'cancelado')),
+        notas           TEXT    NOT NULL DEFAULT '',
+        metodo          TEXT    CHECK (metodo IS NULL OR metodo IN ('efectivo', 'transferencia', 'debito', 'credito')),
+        avisado_en      TEXT,
+        entregado_en    TEXT,
+        usuario_id      INTEGER REFERENCES usuarios (id),
+        creado_en       TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+        CHECK ((estado = 'entregado') = (entregado_en IS NOT NULL))
+      );
+      CREATE INDEX estetica_por_fecha ON servicios_estetica (fecha, estado);
+
+      INSERT INTO configuracion (clave, valor) VALUES
+        ('mensaje_listo',
+         'Hola {nombre}! {mascota} ya está lista ({servicio}). Podés pasar a retirarla cuando quieras. {veterinaria}');
+    `,
+  },
 ];

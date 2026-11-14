@@ -2,7 +2,7 @@
 // (según el rol), y abajo Ajustes y quién está usando el sistema.
 import { NavLink } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, ChartColumn, ConciergeBell, Lock, Package, Settings, ShoppingBasket, Stethoscope, Syringe, UsersRound, type LucideIcon } from 'lucide-react';
+import { Bath, BedDouble, CalendarDays, ChartColumn, ConciergeBell, Lock, Package, Settings, ShoppingBasket, Stethoscope, Syringe, UsersRound, type LucideIcon } from 'lucide-react';
 import { NOMBRE_ROL } from '@compartido/tipos';
 import { Button } from '@/components/ui/button';
 import { Iniciales } from '@/features/sesion/iniciales';
@@ -12,6 +12,7 @@ import { desenvolver, turnos } from '@/lib/api';
 import { fechaLarga } from '@/lib/fechas';
 import { useVencidas } from '@/features/vacunas/consultas-vacunas';
 import { useParaReponer } from '@/features/productos/consultas-productos';
+import { useCantidadInternadas } from '@/features/internacion/consultas-internacion';
 import { Marca } from './marca';
 
 export function useVeterinaria() {
@@ -23,6 +24,8 @@ const SECCIONES: { ruta: string; nombre: string; icono: LucideIcon; soloAdmin?: 
   { ruta: '/recepcion', nombre: 'Recepción', icono: ConciergeBell },
   { ruta: '/mascotas', nombre: 'Mascotas', icono: UsersRound },
   { ruta: '/vacunas', nombre: 'Vacunas', icono: Syringe },
+  { ruta: '/internacion', nombre: 'Internación', icono: BedDouble },
+  { ruta: '/banos', nombre: 'Baños', icono: Bath },
   { ruta: '/mostrador', nombre: 'Mostrador', icono: ShoppingBasket },
   { ruta: '/productos', nombre: 'Productos', icono: Package },
   { ruta: '/profesionales', nombre: 'Veterinarios', icono: Stethoscope, soloAdmin: true },
@@ -58,6 +61,7 @@ export function BarraLateral() {
   const bloquear = useBloquear();
   const vencidas = useVencidas();
   const paraReponer = useParaReponer();
+  const internadas = useCantidadInternadas();
   return (
     <aside className="flex h-full w-[236px] shrink-0 flex-col border-r border-linea bg-lateral px-4 py-5">
       <div className="flex items-center gap-3 px-1">
@@ -69,7 +73,7 @@ export function BarraLateral() {
       </div>
       <nav aria-label="Secciones" className="mt-8 flex flex-col gap-1">
         {SECCIONES.filter((s) => !s.soloAdmin || esAdmin).map((s) => (
-          <Enlace key={s.ruta} ruta={s.ruta} nombre={s.nombre} icono={s.icono} aviso={s.ruta === '/vacunas' ? vencidas.data : s.ruta === '/productos' ? paraReponer.data : undefined} textoAviso={s.ruta === '/productos' ? 'productos para reponer' : undefined} />
+          <Enlace key={s.ruta} ruta={s.ruta} nombre={s.nombre} icono={s.icono} aviso={s.ruta === '/vacunas' ? vencidas.data : s.ruta === '/productos' ? paraReponer.data : s.ruta === '/internacion' ? internadas.data : undefined} textoAviso={s.ruta === '/productos' ? 'productos para reponer' : s.ruta === '/internacion' ? 'mascotas internadas' : undefined} />
         ))}
       </nav>
       <div className="mt-auto flex flex-col gap-3">

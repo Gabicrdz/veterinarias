@@ -1,8 +1,8 @@
 // Ajustes: datos de la veterinaria, usuarios, copias de seguridad y el mensaje de WhatsApp.
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { NOMBRE_DIA, esquemaVeterinaria, esquemaMensajeRecordatorio, esquemaMensajeVacuna, type DatosVeterinaria } from '@compartido/esquemas';
-import { MARCADORES, MARCADORES_VACUNA, armarMensaje, armarMensajeVacuna } from '@compartido/whatsapp';
+import { NOMBRE_DIA, esquemaVeterinaria, esquemaMensajeRecordatorio, esquemaMensajeVacuna, esquemaMensajeListo, type DatosVeterinaria } from '@compartido/esquemas';
+import { MARCADORES, MARCADORES_VACUNA, MARCADORES_LISTO, armarMensaje, armarMensajeVacuna, armarMensajeListo } from '@compartido/whatsapp';
 import { Button } from '@/components/ui/button';
 import { Campo } from '@/components/ui/campo';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,7 @@ export function PaginaAjustes() {
       <TarjetaCopias />
       <TarjetaRecordatorio />
       <TarjetaAvisoVacuna />
+      <TarjetaAvisoListo />
       {info.data && (
         <p className="text-center text-[13px] text-tinta-suave">
           Veterinaria versión {info.data.version} · Base de datos: <span className="break-all">{info.data.baseDeDatos}</span>
@@ -217,6 +218,31 @@ function TarjetaAvisoVacuna() {
           mascota: 'Firulais',
           vacuna: 'Antirrábica',
           fecha: '20/11/2026',
+          veterinaria: veterinaria.data?.nombreVeterinaria ?? '',
+          direccion: veterinaria.data?.direccion ?? '',
+        })
+      }
+    />
+  );
+}
+
+function TarjetaAvisoListo() {
+  const veterinaria = useVeterinaria();
+  return (
+    <TarjetaMensaje
+      titulo="Aviso de baño o peluquería listo"
+      descripcion="El mensaje que se abre desde la pantalla Baños cuando la mascota está lista para retirar."
+      actual={veterinaria.data?.mensajeListo}
+      guardarMensaje={(m) => desenvolver(turnos().veterinaria.guardarMensajeListo(m))}
+      esquema={esquemaMensajeListo}
+      marcadores={MARCADORES_LISTO}
+      avisoGuardado="Mensaje del aviso de baño guardado"
+      ejemplo={(texto) =>
+        armarMensajeListo(texto, {
+          nombre: 'Juan',
+          apellido: 'Pérez',
+          mascota: 'Firulais',
+          servicio: 'Baño y corte',
           veterinaria: veterinaria.data?.nombreVeterinaria ?? '',
           direccion: veterinaria.data?.direccion ?? '',
         })

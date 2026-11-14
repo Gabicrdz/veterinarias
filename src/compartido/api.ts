@@ -1,7 +1,13 @@
 // El contrato entre la ventana y el main: qué funciones existen, qué reciben
 // y qué devuelven. El preload lo implementa; la ventana lo usa como window.turnos.
+import type { TipoEstetica } from './servicios';
 import type {
+  DatosAlta,
   DatosAplicacion,
+  DatosCambioEstetica,
+  DatosEvolucion,
+  DatosIngreso,
+  DatosServicioEstetica,
   DatosBuscarProductos,
   DatosMovimiento,
   DatosProducto,
@@ -36,8 +42,11 @@ import type {
   HorarioLibre,
   InfoSistema,
   Dueno,
+  EvolucionInternacion,
+  Internacion,
   Mascota,
   MovimientoStock,
+  TableroEstetica,
   Producto,
   VentasDelDia,
   Profesional,
@@ -115,6 +124,28 @@ export interface ApiTurnos {
     /** Abre WhatsApp con el aviso ya escrito y anota que se avisó. */
     avisar(aplicacionId: number): Promise<Respuesta<null>>;
   };
+  internacion: {
+    /** Las mascotas internadas hoy, con lo que llevan acumulado. */
+    internadas(): Promise<Respuesta<Internacion[]>>;
+    altas(): Promise<Respuesta<Internacion[]>>;
+    ingresar(datos: DatosIngreso): Promise<Respuesta<number>>;
+    evoluciones(internacionId: number): Promise<Respuesta<EvolucionInternacion[]>>;
+    evolucionar(datos: DatosEvolucion): Promise<Respuesta<number>>;
+    /** Da el alta y cobra los días. Devuelve lo cobrado (centavos). */
+    alta(datos: DatosAlta): Promise<Respuesta<number>>;
+    /** Cuántas hay internadas (para el número del menú). */
+    cantidad(): Promise<Respuesta<number>>;
+  };
+  estetica: {
+    tablero(): Promise<Respuesta<TableroEstetica>>;
+    crear(datos: DatosServicioEstetica): Promise<Respuesta<number>>;
+    /** Avanza un paso (o cancela). Al entregar se cobra. */
+    cambiar(datos: DatosCambioEstetica): Promise<Respuesta<null>>;
+    /** Abre WhatsApp con el aviso "ya está lista" y anota que se avisó. */
+    avisar(id: number): Promise<Respuesta<null>>;
+    /** El último precio de cada servicio, para proponerlo al cargar uno nuevo. */
+    precios(): Promise<Respuesta<Partial<Record<TipoEstetica, number>>>>;
+  };
   productos: {
     buscar(filtro: DatosBuscarProductos): Promise<Respuesta<Producto[]>>;
     /** Solo administración: alta y edición (el stock se mueve con `movimiento`, no desde acá). */
@@ -141,6 +172,7 @@ export interface ApiTurnos {
     guardar(datos: DatosVeterinaria): Promise<Respuesta<null>>;
     guardarMensaje(mensaje: string): Promise<Respuesta<null>>;
     guardarMensajeVacuna(mensaje: string): Promise<Respuesta<null>>;
+    guardarMensajeListo(mensaje: string): Promise<Respuesta<null>>;
   };
   /** Solo administración. */
   reportes: {
@@ -168,6 +200,8 @@ export interface ApiTurnos {
     cargarVacunasEjemplo(): Promise<Respuesta<number>>;
     /** Carga productos con stock y ventas de ejemplo, solo si todavía no hay productos. Devuelve cuántas ventas cargó. */
     cargarProductosEjemplo(): Promise<Respuesta<number>>;
+    /** Carga internaciones y baños de ejemplo, solo si todavía no hay. Devuelve cuántos cargó. */
+    cargarServiciosEjemplo(): Promise<Respuesta<number>>;
   };
 }
 
@@ -206,6 +240,18 @@ export const CANALES = {
   vacunasPendientes: 'vacunas:pendientes',
   vacunasVencidas: 'vacunas:vencidas',
   vacunasAvisar: 'vacunas:avisar',
+  internacionInternadas: 'internacion:internadas',
+  internacionAltas: 'internacion:altas',
+  internacionIngresar: 'internacion:ingresar',
+  internacionEvoluciones: 'internacion:evoluciones',
+  internacionEvolucionar: 'internacion:evolucionar',
+  internacionAlta: 'internacion:alta',
+  internacionCantidad: 'internacion:cantidad',
+  esteticaTablero: 'estetica:tablero',
+  esteticaCrear: 'estetica:crear',
+  esteticaCambiar: 'estetica:cambiar',
+  esteticaAvisar: 'estetica:avisar',
+  esteticaPrecios: 'estetica:precios',
   productosBuscar: 'productos:buscar',
   productosGuardar: 'productos:guardar',
   productosActivo: 'productos:activo',
@@ -234,4 +280,6 @@ export const CANALES = {
   sistemaEjemploTurnos: 'sistema:ejemplo-turnos',
   sistemaEjemploVacunas: 'sistema:ejemplo-vacunas',
   sistemaEjemploProductos: 'sistema:ejemplo-productos',
+  sistemaEjemploServicios: 'sistema:ejemplo-servicios',
+  veterinariaMensajeListo: 'veterinaria:mensaje-listo',
 } as const;

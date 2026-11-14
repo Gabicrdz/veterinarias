@@ -9,7 +9,13 @@ import { z, type ZodType } from 'zod';
 import { CANALES } from '@compartido/api';
 import {
   esquemaBloqueo,
+  esquemaAlta,
   esquemaBuscarProductos,
+  esquemaCambioEstetica,
+  esquemaEvolucion,
+  esquemaIngreso,
+  esquemaMensajeListo,
+  esquemaServicioEstetica,
   esquemaMovimiento,
   esquemaProducto,
   esquemaVenta,
@@ -40,14 +46,16 @@ import { ErrorDeUsuario } from './servicios/errores';
 import { buscarDuenos, buscarMascotas, cambiarActivoMascota, guardarMascota } from './servicios/mascotas';
 import { cambiarActivoProfesional, guardarProfesional, listarProfesionales } from './servicios/profesionales';
 import { bloqueosProximos, borrarBloqueo, crearBloqueo } from './servicios/bloqueos';
-import { guardarVeterinaria, guardarMensajeRecordatorio, guardarMensajeVacuna, obtenerVeterinaria, resumen } from './servicios/veterinaria';
+import { guardarVeterinaria, guardarMensajeRecordatorio, guardarMensajeListo, guardarMensajeVacuna, obtenerVeterinaria, resumen } from './servicios/veterinaria';
 import { anularAplicacion, cantidadVencidas, carnetDeMascota, dosisPendientes, enlaceAviso, marcarAvisado, registrarAplicacion } from './servicios/vacunas';
 import { guardarConsulta, historiaClinica } from './servicios/consultas';
 import { buscarProductos, cambiarActivoProducto, cantidadParaReponer, guardarProducto, movimientosDeProducto, registrarMovimiento } from './servicios/productos';
+import { agregarEvolucion, altasRecientes, cantidadInternadas, darAlta, evolucionesDe, ingresarMascota, listarInternadas } from './servicios/internacion';
+import { cambiarEstadoServicio, crearServicio, enlaceListo, marcarAvisadoListo, tablero, ultimosPrecios } from './servicios/estetica';
 import { anularVenta, registrarVenta, ventasDelDia } from './servicios/ventas';
 import { anularCobro, registrarCobro } from './servicios/cobros';
 import { enlaceRecordatorio, marcarRecordado } from './servicios/recordatorios';
-import { cargarEjemplo, cargarProductosEjemplo, cargarTurnosEjemplo, cargarVacunasEjemploSueltas } from './servicios/ejemplo';
+import { cargarEjemplo, cargarProductosEjemplo, cargarServiciosEjemplo, cargarTurnosEjemplo, cargarVacunasEjemploSueltas } from './servicios/ejemplo';
 import { darDeBajaUsuario, guardarUsuario, hayUsuarios, listarUsuarios } from './servicios/usuarios';
 import { reporte } from './servicios/reportes';
 import { abrirCarpetaCopias, elegirCopia, estadoCopias, exportarCopia, exportarAtenciones, restaurarCopiaElegida } from './copias';
@@ -179,6 +187,27 @@ export function registrarCanales(info: () => InfoSistema): void {
   manejar(CANALES.consultasHistoria, 'clinica', z.tuple([id]), (pid) => historiaClinica(db(), pid));
   manejar(CANALES.consultasGuardar, 'clinica', z.tuple([esquemaConsulta]), (datos, yo) => guardarConsulta(db(), datos, yo));
 
+  // ── Internación y baños/peluquería: las usa todo el equipo ──
+  manejar(CANALES.internacionInternadas, 'sesion', nada, () => listarInternadas(db()));
+  manejar(CANALES.internacionAltas, 'sesion', nada, () => altasRecientes(db()));
+  manejar(CANALES.internacionIngresar, 'sesion', z.tuple([esquemaIngreso]), (datos, yo) => ingresarMascota(db(), datos, yo));
+  manejar(CANALES.internacionEvoluciones, 'sesion', z.tuple([id]), (iid) => evolucionesDe(db(), iid));
+  manejar(CANALES.internacionEvolucionar, 'sesion', z.tuple([esquemaEvolucion]), (datos, yo) => agregarEvolucion(db(), datos, yo));
+  manejar(CANALES.internacionAlta, 'sesion', z.tuple([esquemaAlta]), (datos) => darAlta(db(), datos));
+  manejar(CANALES.internacionCantidad, 'sesion', nada, () => cantidadInternadas(db()));
+  manejar(CANALES.esteticaTablero, 'sesion', nada, () => tablero(db()));
+  manejar(CANALES.esteticaCrear, 'sesion', z.tuple([esquemaServicioEstetica]), (datos, yo) => crearServicio(db(), datos, yo));
+  manejar(CANALES.esteticaCambiar, 'sesion', z.tuple([esquemaCambioEstetica]), (datos) => {
+    cambiarEstadoServicio(db(), datos);
+    return null;
+  });
+  manejar(CANALES.esteticaAvisar, 'sesion', z.tuple([id]), async (sid) => {
+    await shell.openExternal(enlaceListo(db(), sid));
+    marcarAvisadoListo(db(), sid);
+    return null;
+  });
+  manejar(CANALES.esteticaPrecios, 'sesion', nada, () => ultimosPrecios(db()));
+
   // ── Productos y mostrador: ver y vender, cualquiera con sesión; editar precios y ajustar stock, administración ──
   manejar(CANALES.productosBuscar, 'sesion', z.tuple([esquemaBuscarProductos]), (filtro) => buscarProductos(db(), filtro));
   manejar(CANALES.productosGuardar, 'admin', z.tuple([esquemaProducto]), (datos, yo) => guardarProducto(db(), datos, yo));
@@ -236,6 +265,11 @@ export function registrarCanales(info: () => InfoSistema): void {
   manejar(CANALES.sistemaEjemplo, 'admin', nada, () => cargarEjemplo(db()));
   manejar(CANALES.sistemaEjemploTurnos, 'admin', nada, () => cargarTurnosEjemplo(db()));
   manejar(CANALES.sistemaEjemploVacunas, 'admin', nada, () => cargarVacunasEjemploSueltas(db()));
+  manejar(CANALES.veterinariaMensajeListo, 'admin', z.tuple([esquemaMensajeListo]), (mensaje) => {
+    guardarMensajeListo(db(), mensaje);
+    return null;
+  });
+  manejar(CANALES.sistemaEjemploServicios, 'admin', nada, () => cargarServiciosEjemplo(db()));
   manejar(CANALES.sistemaEjemploProductos, 'admin', nada, () => cargarProductosEjemplo(db()));
 }
 

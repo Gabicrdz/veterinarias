@@ -182,6 +182,17 @@ export function reporte(db: Lector, periodo: Periodo): Reporte {
     )
     .all(...p) as Reporte['productos']['masVendidos'];
 
+  // ---- Internación y baños: lo cobrado en el período (por fecha de alta / de entrega) ----
+  const inter = c
+    .prepare(`SELECT count(*) AS altas, coalesce(sum(CAST(julianday(egreso) - julianday(ingreso) AS INTEGER) + (egreso = ingreso)), 0) AS dias, coalesce(sum(total_centavos), 0) AS cobrado FROM internaciones WHERE egreso BETWEEN ? AND ?`)
+    .get(...p) as { altas: number; dias: number; cobrado: number };
+  const esteticaPorTipo = c
+    .prepare(
+      `SELECT tipo, count(*) AS cantidad, sum(precio_centavos) AS centavos FROM servicios_estetica
+       WHERE estado = 'entregado' AND substr(entregado_en, 1, 10) BETWEEN ? AND ? GROUP BY tipo ORDER BY centavos DESC, tipo`,
+    )
+    .all(...p) as Reporte['servicios']['estetica']['porTipo'];
+
   return {
     desde,
     hasta,
@@ -200,6 +211,14 @@ export function reporte(db: Lector, periodo: Periodo): Reporte {
     porProfesional,
     porEspecie,
     porDia,
+    servicios: {
+      internacion: { altas: inter.altas, dias: inter.dias, cobradoCentavos: inter.cobrado },
+      estetica: {
+        entregados: esteticaPorTipo.reduce((s, x) => s + x.cantidad, 0),
+        cobradoCentavos: esteticaPorTipo.reduce((s, x) => s + x.centavos, 0),
+        porTipo: esteticaPorTipo,
+      },
+    },
     productos: { ventas: v.ventas, totalCentavos: v.total, gananciaCentavos: v.ganancia, masVendidos },
     faltadores,
   };

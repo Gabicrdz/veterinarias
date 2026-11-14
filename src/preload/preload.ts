@@ -56,6 +56,22 @@ const api: ApiTurnos = {
     vencidas: () => pedir(CANALES.vacunasVencidas),
     avisar: (aplicacionId) => pedir(CANALES.vacunasAvisar, aplicacionId),
   },
+  internacion: {
+    internadas: () => pedir(CANALES.internacionInternadas),
+    altas: () => pedir(CANALES.internacionAltas),
+    ingresar: (datos) => pedir(CANALES.internacionIngresar, datos),
+    evoluciones: (internacionId) => pedir(CANALES.internacionEvoluciones, internacionId),
+    evolucionar: (datos) => pedir(CANALES.internacionEvolucionar, datos),
+    alta: (datos) => pedir(CANALES.internacionAlta, datos),
+    cantidad: () => pedir(CANALES.internacionCantidad),
+  },
+  estetica: {
+    tablero: () => pedir(CANALES.esteticaTablero),
+    crear: (datos) => pedir(CANALES.esteticaCrear, datos),
+    cambiar: (datos) => pedir(CANALES.esteticaCambiar, datos),
+    avisar: (id) => pedir(CANALES.esteticaAvisar, id),
+    precios: () => pedir(CANALES.esteticaPrecios),
+  },
   productos: {
     buscar: (filtro) => pedir(CANALES.productosBuscar, filtro),
     guardar: (datos) => pedir(CANALES.productosGuardar, datos),
@@ -78,6 +94,7 @@ const api: ApiTurnos = {
     guardar: (datos) => pedir(CANALES.veterinariaGuardar, datos),
     guardarMensaje: (mensaje) => pedir(CANALES.veterinariaMensaje, mensaje),
     guardarMensajeVacuna: (mensaje) => pedir(CANALES.veterinariaMensajeVacuna, mensaje),
+    guardarMensajeListo: (mensaje) => pedir(CANALES.veterinariaMensajeListo, mensaje),
   },
   reportes: {
     obtener: (periodo) => pedir(CANALES.reportesObtener, periodo),
@@ -97,6 +114,7 @@ const api: ApiTurnos = {
     cargarTurnosEjemplo: () => pedir(CANALES.sistemaEjemploTurnos),
     cargarVacunasEjemplo: () => pedir(CANALES.sistemaEjemploVacunas),
     cargarProductosEjemplo: () => pedir(CANALES.sistemaEjemploProductos),
+    cargarServiciosEjemplo: () => pedir(CANALES.sistemaEjemploServicios),
   },
 };
 
