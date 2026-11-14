@@ -13,7 +13,12 @@ import { sumarMinutos, type EstadoTurno } from '@compartido/agenda';
 import { aMinutos, diaDeLaSemana, horariosDeTurno } from '@compartido/horarios';
 import { fechaLocal, horaLocal } from './fechas';
 import { estaBloqueado } from './bloqueos';
+import { sumarMeses } from '@compartido/vacunas';
+import { normalizar } from './texto';
 import { listarProfesionales } from './profesionales';
+import { esquemaProducto, esquemaVenta } from '@compartido/esquemas';
+import { guardarProducto, obtenerProducto } from './productos';
+import { registrarVenta } from './ventas';
 
 const dias = (lista: number[], desde: string, hasta: string) => lista.map((diaSemana) => ({ diaSemana, desde, hasta }));
 
@@ -118,12 +123,63 @@ export function cargarEjemplo(db: BaseDeDatos, ahora: Date = new Date()): Result
       );
       if (!duenoDe.has(dni)) duenoDe.set(dni, (db.$client.prepare('SELECT dueno_id AS id FROM mascotas WHERE id = ?').get(id) as { id: number }).id);
     }
+    cargarVacunasEjemplo(db, ahora);
+    cargarProductosEjemplo(db, ahora);
     const creados = hayProfesionales ? [] : crearUsuariosEjemplo(db);
     // Los turnos, solo con los veterinarios de ejemplo (de los propios no conocemos el horario real)
     if (!hayProfesionales) cargarTurnosEjemplo(db, ahora);
     return creados;
   })();
   return { ...resumen(db), usuarios };
+}
+
+// Cuándo toca la próxima dosis de la antirrábica, en días desde hoy: algunas ya vencidas,
+// otras esta semana o este mes y el resto más adelante (así la pantalla Vacunas tiene de todo).
+const DESPLAZAMIENTOS_RABIA = [-35, 3, 18, -9, 120, 6, 250, -2, 26, 75, 190, 11];
+
+/**
+ * Carnets de ejemplo para una veterinaria que ya tiene mascotas pero todavía no tiene
+ * vacunas cargadas (por ejemplo, el ejemplo se cargó antes de que existiera esta pantalla).
+ */
+export function cargarVacunasEjemploSueltas(db: BaseDeDatos, ahora: Date = new Date()): number {
+  if ((db.$client.prepare('SELECT count(*) AS n FROM aplicaciones').get() as { n: number }).n > 0) {
+    throw new ErrorDeUsuario('Ya hay vacunas cargadas: las de ejemplo son solo para un carnet vacío.');
+  }
+  const hayMascotas = db.$client.prepare(`SELECT 1 FROM mascotas WHERE especie IN ('perro', 'gato') AND activo = 1 LIMIT 1`).get();
+  if (!hayMascotas) throw new ErrorDeUsuario('Primero cargá mascotas (perros o gatos).');
+  db.$client.transaction(() => cargarVacunasEjemplo(db, ahora))();
+  return (db.$client.prepare('SELECT count(*) AS n FROM aplicaciones').get() as { n: number }).n;
+}
+
+/** Carnets de vacunación de ejemplo para perros y gatos (los demás animales no llevan). */
+function cargarVacunasEjemplo(db: BaseDeDatos, ahora: Date): void {
+  const hoy = fechaLocal(ahora);
+  const dia = (desplazamiento: number) => fechaLocal(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + desplazamiento, 12));
+  const insertar = db.$client.prepare(
+    `INSERT INTO aplicaciones (mascota_id, tipo, nombre, clave, fecha, proxima_dosis, lote, avisado_en, creado_en)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const mascotas = db.$client.prepare(`SELECT id, especie, fecha_nacimiento AS nacimiento FROM mascotas WHERE especie IN ('perro', 'gato') ORDER BY id`).all() as {
+    id: number;
+    especie: string;
+    nacimiento: string | null;
+  }[];
+  mascotas.forEach((m, i) => {
+    // Una aplicación solo se carga si la mascota ya había nacido ese día
+    const poner = (nombre: string, tipo: 'vacuna' | 'desparasitacion', proxima: string, meses: number, avisado: boolean) => {
+      const fecha = sumarMeses(proxima, -meses);
+      if (fecha > hoy || (m.nacimiento && fecha < m.nacimiento)) return;
+      // Si ya le tocaba avisar y no se avisó, queda para que el ejemplo muestre las dos cosas
+      insertar.run(m.id, tipo, nombre, normalizar(nombre), fecha, proxima, `L${String(1000 + i * 7)}`, avisado ? `${hoy} 09:00:00` : null, `${fecha} 12:00:00`);
+    };
+    const proximaRabia = dia(DESPLAZAMIENTOS_RABIA[i % DESPLAZAMIENTOS_RABIA.length]!);
+    // La dosis del año anterior (ya renovada): se ve en el carnet pero nunca figura como pendiente
+    poner('Antirrábica', 'vacuna', sumarMeses(proximaRabia, -12), 12, false);
+    poner('Antirrábica', 'vacuna', proximaRabia, 12, proximaRabia < hoy && i % 3 === 0);
+    const principal = m.especie === 'perro' ? 'Quíntuple / Séxtuple' : 'Triple felina';
+    if (i % 4 !== 3) poner(principal, 'vacuna', dia(DESPLAZAMIENTOS_RABIA[(i + 5) % DESPLAZAMIENTOS_RABIA.length]! + 40), 12, false);
+    if (i % 3 !== 2) poner('Desparasitación interna', 'desparasitacion', dia(((i * 11) % 100) - 14), 3, false);
+  });
 }
 
 /** Números "al azar" pero siempre los mismos (semilla fija): la demo sale igual cada vez. */
@@ -255,4 +311,68 @@ export function cargarTurnosEjemplo(db: BaseDeDatos, ahora: Date = new Date()): 
     }
   })();
   return creados;
+}
+
+// ── Productos y ventas del mostrador ──
+// [código, nombre, categoría, unidad, costo $, precio $, stock mínimo, stock inicial]
+const PRODUCTOS: [string, string, string, 'unidad' | 'kg', number, number, number, number][] = [
+  ['7790001000011', 'Alimento perro adulto (suelto)', 'alimento', 'kg', 2800, 3800, 20, 140],
+  ['7790001000028', 'Alimento perro cachorro (suelto)', 'alimento', 'kg', 3200, 4300, 15, 70],
+  ['7790001000035', 'Alimento gato adulto (suelto)', 'alimento', 'kg', 3500, 4700, 12, 60],
+  ['7790001000042', 'Alimento gato castrado (suelto)', 'alimento', 'kg', 3700, 4900, 10, 9],
+  ['7790001000059', 'Balanceado perro adulto 15 kg', 'alimento', 'unidad', 42000, 56000, 3, 12],
+  ['7790001000066', 'Pipeta antipulgas perro mediano', 'medicamento', 'unidad', 6500, 9800, 6, 26],
+  ['7790001000073', 'Pipeta antipulgas gato', 'medicamento', 'unidad', 5800, 8700, 6, 5], // ya viene con stock bajo
+  ['7790001000080', 'Antiparasitario en comprimidos', 'medicamento', 'unidad', 3100, 4600, 8, 30],
+  ['7790001000097', 'Collar antipulgas', 'medicamento', 'unidad', 7200, 10900, 4, 0],
+  ['7790001000103', 'Shampoo medicado 250 ml', 'higiene', 'unidad', 4800, 7400, 5, 14],
+  ['7790001000110', 'Shampoo neutro 250 ml', 'higiene', 'unidad', 3300, 5200, 5, 18],
+  ['7790001000127', 'Arena sanitaria 4 kg', 'higiene', 'unidad', 4100, 6300, 6, 22],
+  ['', 'Cepillo para pelo largo', 'accesorio', 'unidad', 2900, 4800, 3, 11],
+  ['', 'Correa reforzada', 'accesorio', 'unidad', 5200, 8500, 3, 8],
+  ['7790001000134', 'Snack dental', 'otro', 'unidad', 1400, 2400, 10, 40],
+];
+
+/** Productos con stock y ventas de los últimos 14 días (siempre las mismas: la demo sale igual cada vez). */
+export function cargarProductosEjemplo(db: BaseDeDatos, ahora: Date = new Date()): number {
+  if ((db.$client.prepare('SELECT count(*) AS n FROM productos').get() as { n: number }).n > 0) {
+    throw new ErrorDeUsuario('Ya hay productos cargados: los de ejemplo son solo para un mostrador vacío.');
+  }
+  const usuario = db.$client.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' AND activo = 1 ORDER BY id LIMIT 1`).get() as { id: number } | undefined;
+  const dia = (desp: number, hora: number, minuto: number) => new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + desp, hora, minuto);
+  db.$client.transaction(() => {
+    const ids = PRODUCTOS.map(([codigo, nombre, categoria, unidad, costo, precio, minimo, stock]) =>
+      guardarProducto(
+        db,
+        esquemaProducto.parse({ codigo, nombre, categoria, unidad, costoCentavos: costo * 100, precioCentavos: precio * 100, stockMinimo: minimo, stockInicial: stock }),
+        usuario ?? null,
+        dia(-15, 9, 0),
+      ),
+    );
+    const r = azar(2027);
+    for (let atras = 14; atras >= 0; atras--) {
+      const cuantas = atras === 0 ? 3 : 2 + Math.floor(r() * 5);
+      for (let n = 0; n < cuantas; n++) {
+        // Hoy, las ventas son entre las 9 y "ahora" (no del futuro); los otros días, a lo largo de la jornada
+        const apertura = dia(0, 9, 0);
+        const momento = atras === 0 ? new Date(apertura.getTime() + r() * Math.max(0, ahora.getTime() - apertura.getTime())) : dia(-atras, 9 + Math.floor(r() * 10), Math.floor(r() * 60));
+        if (momento > ahora || (atras === 0 && ahora <= apertura)) continue;
+        const items: { productoId: number; cantidad: number }[] = [];
+        for (let k = 0, renglones = 1 + Math.floor(r() * 3); k < renglones; k++) {
+          const p = obtenerProducto(db, ids[Math.floor(r() * ids.length)]!);
+          if (items.some((i) => i.productoId === p.id) || p.stockMilesimas <= 0) continue;
+          const pedida = p.unidad === 'kg' ? [0.5, 1, 1, 2, 3, 5][Math.floor(r() * 6)]! : 1 + Math.floor(r() * 2);
+          // El ejemplo nunca baja un producto hasta el mínimo: así solo quedan con aviso los que ya venían bajos o sin stock
+          const paso = p.unidad === 'kg' ? 0.5 : 1;
+          const disponible = (p.stockMilesimas - p.stockMinimoMilesimas) / 1000 - paso;
+          const cantidad = Math.min(pedida, Math.floor(disponible / paso) * paso);
+          if (cantidad > 0) items.push({ productoId: p.id, cantidad });
+        }
+        if (items.length === 0) continue;
+        const metodo = METODOS_EJEMPLO[Math.floor(r() * METODOS_EJEMPLO.length)]!;
+        registrarVenta(db, esquemaVenta.parse({ items, metodo }), usuario ?? null, momento);
+      }
+    }
+  })();
+  return (db.$client.prepare('SELECT count(*) AS n FROM ventas').get() as { n: number }).n;
 }

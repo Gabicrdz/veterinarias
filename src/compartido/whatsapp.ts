@@ -51,9 +51,38 @@ export const MARCADORES: { marca: string; explicacion: string }[] = [
 ];
 
 /** Reemplaza {nombre}, {dia}, etc. Las marcas que no existen quedan como están. */
-export function armarMensaje(plantilla: string, datos: DatosMensaje): string {
-  return plantilla.replace(/\{(\w+)\}/g, (marca, clave: string) => (clave in datos ? datos[clave as keyof DatosMensaje] : marca));
+export function reemplazarMarcas(plantilla: string, datos: Record<string, string>): string {
+  return plantilla.replace(/\{(\w+)\}/g, (marca, clave: string) => (Object.hasOwn(datos, clave) ? datos[clave]! : marca));
 }
+
+export function armarMensaje(plantilla: string, datos: DatosMensaje): string {
+  return reemplazarMarcas(plantilla, { ...datos });
+}
+
+// ---- Aviso de próxima dosis (vacunas y desparasitaciones) ----
+export interface DatosMensajeVacuna {
+  nombre: string;
+  apellido: string;
+  mascota: string;
+  /** "Antirrábica" */
+  vacuna: string;
+  /** "20/11/2026" */
+  fecha: string;
+  veterinaria: string;
+  direccion: string;
+}
+
+export const MARCADORES_VACUNA: { marca: string; explicacion: string }[] = [
+  { marca: '{nombre}', explicacion: 'nombre del dueño' },
+  { marca: '{apellido}', explicacion: 'apellido del dueño' },
+  { marca: '{mascota}', explicacion: 'nombre de la mascota' },
+  { marca: '{vacuna}', explicacion: 'Antirrábica' },
+  { marca: '{fecha}', explicacion: '20/11/2026' },
+  { marca: '{veterinaria}', explicacion: 'nombre de la veterinaria' },
+  { marca: '{direccion}', explicacion: 'dirección de la veterinaria' },
+];
+
+export const armarMensajeVacuna = (plantilla: string, datos: DatosMensajeVacuna) => reemplazarMarcas(plantilla, { ...datos });
 
 /** El enlace que abre WhatsApp (en la compu o el celular) con el mensaje ya escrito. */
 export function enlaceWhatsApp(numero: string, mensaje: string): string {

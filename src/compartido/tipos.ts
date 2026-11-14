@@ -2,6 +2,8 @@
 import type { COLORES_PROFESIONAL, ESPECIES, METODOS, ROLES, SEXOS } from './esquemas';
 import type { Franja } from './horarios';
 import type { EstadoTurno } from './agenda';
+import type { EstadoDosis, TipoAplicacion } from './vacunas';
+import type { CategoriaProducto, EstadoStock, TipoMovimiento, Unidad } from './productos';
 
 export type Respuesta<T> = { ok: true; datos: T } | { ok: false; error: string };
 
@@ -67,6 +69,7 @@ export interface Veterinaria {
   direccion: string;
   telefono: string;
   mensajeRecordatorio: string;
+  mensajeVacuna: string;
 }
 
 export interface Resumen {
@@ -231,6 +234,14 @@ export interface Reporte {
   /** Atenciones por especie (cada animal atendido en el período). */
   porEspecie: { especie: Especie; atenciones: number; montoCentavos: number }[];
   porDia: { fecha: string; atendidos: number; ausentes: number; ingresosCentavos: number }[];
+  /** Ventas del mostrador (productos) del período, sin contar las anuladas. */
+  productos: {
+    ventas: number;
+    totalCentavos: number;
+    /** Lo vendido menos lo que costaba. */
+    gananciaCentavos: number;
+    masVendidos: { productoId: number; nombre: string; unidad: Unidad; cantidadMilesimas: number; totalCentavos: number }[];
+  };
   /** Mascotas con 2 o más ausencias en el período */
   faltadores: { mascotaId: number; mascota: string; dueno: string; telefono: string; ausentes: number; turnos: number }[];
 }
@@ -252,4 +263,102 @@ export interface EstadoCopias {
 export interface CopiaElegida {
   nombre: string;
   descripcion: string;
+}
+
+// ---------- Vacunas y desparasitaciones ----------
+/** Una aplicación del carnet de la mascota. */
+export interface Aplicacion {
+  id: number;
+  mascotaId: number;
+  tipo: TipoAplicacion;
+  nombre: string;
+  fecha: string;
+  proximaDosis: string | null;
+  lote: string;
+  notas: string;
+  /** Quién la registró (veterinario o recepción), si se sabe. */
+  registradoPor: string;
+  /** Si ya se avisó al dueño de la próxima dosis (momento del aviso). */
+  avisadoEn: string | null;
+  /** Si ya se aplicó una más nueva del mismo nombre: esta dosis ya se cumplió. */
+  renovada: boolean;
+}
+
+/** Una dosis que toca (o ya pasó): lo que ve la pantalla Vacunas. */
+export interface DosisPendiente {
+  aplicacionId: number;
+  mascotaId: number;
+  mascota: string;
+  especie: Especie;
+  dueno: string;
+  telefono: string;
+  /** El teléfono sirve para WhatsApp (es un celular con código de área). */
+  tieneWhatsApp: boolean;
+  tipo: TipoAplicacion;
+  nombre: string;
+  /** Cuándo se aplicó la anterior. */
+  aplicadaEl: string;
+  proximaDosis: string;
+  /** Negativo = ya pasó hace tantos días. */
+  dias: number;
+  estado: EstadoDosis;
+  avisadoEn: string | null;
+}
+
+// ---------- Productos, stock y ventas del mostrador ----------
+export interface Producto {
+  id: number;
+  codigo: string | null;
+  nombre: string;
+  categoria: CategoriaProducto;
+  unidad: Unidad;
+  costoCentavos: number;
+  precioCentavos: number;
+  /** Cantidades en milésimas (1 unidad = 1000). */
+  stockMinimoMilesimas: number;
+  stockMilesimas: number;
+  estado: EstadoStock;
+  activo: boolean;
+}
+
+export interface MovimientoStock {
+  id: number;
+  tipo: TipoMovimiento;
+  /** Con signo: positivo entra, negativo sale. */
+  cantidadMilesimas: number;
+  costoCentavos: number | null;
+  motivo: string;
+  fecha: string;
+  ventaId: number | null;
+  usuario: string;
+}
+
+export interface ItemDeVenta {
+  productoId: number;
+  nombre: string;
+  unidad: Unidad;
+  cantidadMilesimas: number;
+  precioCentavos: number;
+  subtotalCentavos: number;
+}
+
+export interface Venta {
+  id: number;
+  fecha: string;
+  /** Hora de la venta, "HH:MM". */
+  hora: string;
+  totalCentavos: number;
+  metodo: MetodoPago;
+  usuario: string;
+  anulada: boolean;
+  items: ItemDeVenta[];
+}
+
+/** Lo que muestra el mostrador de un día: las ventas y los totales (sin contar las anuladas). */
+export interface VentasDelDia {
+  fecha: string;
+  ventas: Venta[];
+  totalCentavos: number;
+  cantidad: number;
+  porMetodo: { metodo: MetodoPago; centavos: number }[];
 }

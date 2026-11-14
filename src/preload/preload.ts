@@ -48,6 +48,27 @@ const api: ApiTurnos = {
     historia: (mascotaId) => pedir(CANALES.consultasHistoria, mascotaId),
     guardar: (datos) => pedir(CANALES.consultasGuardar, datos),
   },
+  vacunas: {
+    carnet: (mascotaId) => pedir(CANALES.vacunasCarnet, mascotaId),
+    registrar: (datos) => pedir(CANALES.vacunasRegistrar, datos),
+    anular: (id) => pedir(CANALES.vacunasAnular, id),
+    pendientes: (filtro) => pedir(CANALES.vacunasPendientes, filtro),
+    vencidas: () => pedir(CANALES.vacunasVencidas),
+    avisar: (aplicacionId) => pedir(CANALES.vacunasAvisar, aplicacionId),
+  },
+  productos: {
+    buscar: (filtro) => pedir(CANALES.productosBuscar, filtro),
+    guardar: (datos) => pedir(CANALES.productosGuardar, datos),
+    cambiarActivo: (id, activo) => pedir(CANALES.productosActivo, id, activo),
+    movimiento: (datos) => pedir(CANALES.productosMovimiento, datos),
+    movimientos: (productoId) => pedir(CANALES.productosMovimientos, productoId),
+    paraReponer: () => pedir(CANALES.productosParaReponer),
+  },
+  ventas: {
+    registrar: (datos) => pedir(CANALES.ventasRegistrar, datos),
+    anular: (id) => pedir(CANALES.ventasAnular, id),
+    delDia: (fecha) => pedir(CANALES.ventasDelDia, fecha),
+  },
   cobros: {
     registrar: (datos) => pedir(CANALES.cobrosRegistrar, datos),
     anular: (id) => pedir(CANALES.cobrosAnular, id),
@@ -56,6 +77,7 @@ const api: ApiTurnos = {
     obtener: () => pedir(CANALES.veterinariaObtener),
     guardar: (datos) => pedir(CANALES.veterinariaGuardar, datos),
     guardarMensaje: (mensaje) => pedir(CANALES.veterinariaMensaje, mensaje),
+    guardarMensajeVacuna: (mensaje) => pedir(CANALES.veterinariaMensajeVacuna, mensaje),
   },
   reportes: {
     obtener: (periodo) => pedir(CANALES.reportesObtener, periodo),
@@ -73,6 +95,8 @@ const api: ApiTurnos = {
     resumen: () => pedir(CANALES.sistemaResumen),
     cargarEjemplo: () => pedir(CANALES.sistemaEjemplo),
     cargarTurnosEjemplo: () => pedir(CANALES.sistemaEjemploTurnos),
+    cargarVacunasEjemplo: () => pedir(CANALES.sistemaEjemploVacunas),
+    cargarProductosEjemplo: () => pedir(CANALES.sistemaEjemploProductos),
   },
 };
 

@@ -4,6 +4,8 @@
 import { z } from 'zod';
 import { aMinutos, esHora } from './horarios';
 import { ESTADOS } from './agenda';
+import { TIPOS_APLICACION } from './vacunas';
+import { CATEGORIAS_PRODUCTO, UNIDADES } from './productos';
 
 export const id = z.number().int().positive();
 const texto = (campo: string, maximo: number) =>
@@ -168,6 +170,7 @@ export const esquemaVeterinaria = z.object({
 });
 
 export const esquemaMensajeRecordatorio = texto('el mensaje del recordatorio', 600);
+export const esquemaMensajeVacuna = texto('el mensaje del aviso de vacuna', 600);
 export type DatosVeterinaria = z.input<typeof esquemaVeterinaria>;
 
 // ---------- Turnos ----------
@@ -244,6 +247,83 @@ export const esquemaCobro = z
     metodo: z.enum(METODOS, { message: 'Elegí cómo paga.' }),
   });
 export type DatosCobro = z.input<typeof esquemaCobro>;
+
+// ---------- Vacunas y desparasitaciones ----------
+export const esquemaAplicacion = z
+  .object({
+    mascotaId: id,
+    tipo: z.enum(TIPOS_APLICACION, { message: 'Elegí si es vacuna o desparasitación.' }),
+    nombre: texto('qué se aplicó', 60),
+    fecha: esquemaFecha,
+    /** Cuándo toca la próxima dosis. Vacío = no hay (por ejemplo, una dosis única). */
+    proximaDosis: esquemaFecha.nullable().default(null),
+    lote: textoOpcional(40),
+    notas: textoOpcional(200),
+  })
+  .refine((a) => a.proximaDosis === null || a.proximaDosis > a.fecha, {
+    message: 'La próxima dosis tiene que ser después de la fecha de aplicación.',
+    path: ['proximaDosis'],
+  });
+export type DatosAplicacion = z.input<typeof esquemaAplicacion>;
+
+export const esquemaPendientes = z.object({ dentroDeDias: z.number().int().min(0).max(365).default(30) });
+export type DatosPendientes = z.input<typeof esquemaPendientes>;
+
+// ---------- Productos, stock y ventas del mostrador ----------
+// Las cantidades llegan en kilos o unidades (1,5) y el main las pasa a milésimas.
+const cantidad = (campo: string) => z.number({ error: `${campo} no es válida.` }).positive(`${campo} tiene que ser mayor que cero.`).max(100_000, `${campo} es demasiado alta.`);
+const importe = (campo: string) =>
+  z.number({ error: `${campo} no es válido.` }).int(`${campo} no es válido.`).min(0, `${campo} no puede ser negativo.`).max(100_000_000, `${campo} es demasiado alto.`);
+
+export const esquemaProducto = z.object({
+  id: id.optional(),
+  /** Código de barras o interno (opcional): permite vender con el lector. */
+  codigo: z
+    .string()
+    .trim()
+    .max(40, 'El código: máximo 40 caracteres.')
+    .default('')
+    .transform((c) => c || null),
+  nombre: texto('el nombre del producto', 80),
+  categoria: z.enum(CATEGORIAS_PRODUCTO, { message: 'Elegí la categoría.' }),
+  unidad: z.enum(UNIDADES, { message: 'Elegí cómo se vende.' }).default('unidad'),
+  costoCentavos: importe('El costo').default(0),
+  precioCentavos: importe('El precio').refine((p) => p > 0, 'Escribí el precio de venta.'),
+  /** Aviso de "stock bajo" cuando queda esto o menos. 0 = sin aviso. */
+  stockMinimo: z.number({ error: 'El stock mínimo no es válido.' }).min(0, 'El stock mínimo no puede ser negativo.').max(100_000).default(0),
+  /** Solo al crear: lo que hay en este momento. */
+  stockInicial: z.number({ error: 'El stock inicial no es válido.' }).min(0, 'El stock inicial no puede ser negativo.').max(100_000).default(0),
+});
+export type DatosProducto = z.input<typeof esquemaProducto>;
+
+export const ESTADOS_FILTRO_STOCK = ['todos', 'bajo', 'sin_stock'] as const;
+export const esquemaBuscarProductos = z.object({
+  texto: z.string().trim().max(60).default(''),
+  categoria: z.enum(CATEGORIAS_PRODUCTO).nullable().default(null),
+  estado: z.enum(ESTADOS_FILTRO_STOCK).default('todos'),
+  incluirBajas: z.boolean().default(false),
+});
+export type DatosBuscarProductos = z.input<typeof esquemaBuscarProductos>;
+
+/** Entrada por compra, merma o ajuste por conteo (en el ajuste se escribe lo CONTADO, no la diferencia). */
+export const esquemaMovimiento = z.object({
+  productoId: id,
+  tipo: z.enum(['compra', 'merma', 'ajuste'], { message: 'Elegí el tipo de movimiento.' }),
+  cantidad: z.number({ error: 'La cantidad no es válida.' }).min(0, 'La cantidad no puede ser negativa.').max(100_000, 'La cantidad es demasiado alta.'),
+  /** Solo en compras: el costo nuevo de cada unidad (opcional). */
+  costoCentavos: importe('El costo').nullable().default(null),
+  motivo: textoOpcional(120),
+});
+export type DatosMovimiento = z.input<typeof esquemaMovimiento>;
+
+export const esquemaVenta = z.object({
+  items: z
+    .array(z.object({ productoId: id, cantidad: cantidad('La cantidad') }))
+    .min(1, 'Agregá al menos un producto.')
+    .max(60, 'Una venta puede tener hasta 60 productos distintos.'),
+  metodo: z.enum(METODOS, { message: 'Elegí cómo paga.' }),
+});
+export type DatosVenta = z.input<typeof esquemaVenta>;
 
 // ---------- Usuarios ----------
 export const ROLES = ['admin', 'profesional', 'recepcion'] as const;

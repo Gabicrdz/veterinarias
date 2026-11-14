@@ -232,4 +232,100 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE consultas ADD COLUMN temperatura_decimas INTEGER CHECK (temperatura_decimas IS NULL OR temperatura_decimas BETWEEN 300 AND 450);
     `,
   },
+  {
+    nombre: 'Vacunas y desparasitaciones con aviso de próxima dosis',
+    sql: /* sql */ `
+      -- El carnet de la mascota: una fila por aplicación. Como los cobros, NO se borran:
+      -- una carga equivocada se ANULA (queda el rastro de quién y cuándo).
+      CREATE TABLE aplicaciones (
+        id             INTEGER PRIMARY KEY,
+        mascota_id     INTEGER NOT NULL REFERENCES mascotas (id),
+        tipo           TEXT    NOT NULL CHECK (tipo IN ('vacuna', 'desparasitacion')),
+        nombre         TEXT    NOT NULL,                 -- "Antirrábica", "Desparasitación interna"…
+        clave          TEXT    NOT NULL,                 -- el nombre sin tildes ni mayúsculas: así "antirrabica" y "Antirrábica" son lo mismo
+        fecha          TEXT    NOT NULL,                 -- cuándo se aplicó
+        proxima_dosis  TEXT,                             -- cuándo toca la siguiente (NULL = no hay)
+        lote           TEXT    NOT NULL DEFAULT '',
+        notas          TEXT    NOT NULL DEFAULT '',
+        profesional_id INTEGER REFERENCES profesionales (id),
+        usuario_id     INTEGER REFERENCES usuarios (id),
+        avisado_en     TEXT,                             -- cuándo se le avisó al dueño de la próxima dosis
+        anulado        INTEGER NOT NULL DEFAULT 0 CHECK (anulado IN (0, 1)),
+        anulado_en     TEXT,
+        creado_en      TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+        CHECK (proxima_dosis IS NULL OR proxima_dosis > fecha)
+      );
+      CREATE INDEX aplicaciones_por_mascota ON aplicaciones (mascota_id, fecha);
+      -- Para la lista de dosis que tocan: solo las vigentes y con próxima fecha
+      CREATE INDEX aplicaciones_por_dosis ON aplicaciones (proxima_dosis) WHERE anulado = 0 AND proxima_dosis IS NOT NULL;
+
+      INSERT INTO configuracion (clave, valor) VALUES
+        ('mensaje_vacuna',
+         'Hola {nombre}! Te escribimos de {veterinaria}: a {mascota} le toca la próxima dosis de {vacuna} (fecha: {fecha}). Podés pasar o pedir turno cuando quieras. ¡Gracias!');
+    `,
+  },
+  {
+    nombre: 'Productos, stock y ventas del mostrador',
+    sql: /* sql */ `
+      -- Cantidades en MILÉSIMAS enteras (1 unidad = 1000, 1,5 kg = 1500) y dinero en centavos.
+      CREATE TABLE productos (
+        id                    INTEGER PRIMARY KEY,
+        codigo                TEXT,                      -- código de barras o interno (opcional)
+        nombre                TEXT    NOT NULL,
+        categoria             TEXT    NOT NULL CHECK (categoria IN ('alimento', 'medicamento', 'higiene', 'accesorio', 'otro')),
+        unidad                TEXT    NOT NULL DEFAULT 'unidad' CHECK (unidad IN ('unidad', 'kg')),
+        costo_centavos        INTEGER NOT NULL DEFAULT 0 CHECK (costo_centavos >= 0),
+        precio_centavos       INTEGER NOT NULL CHECK (precio_centavos > 0),
+        stock_minimo_milesimas INTEGER NOT NULL DEFAULT 0 CHECK (stock_minimo_milesimas >= 0),
+        activo                INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+        busqueda              TEXT    NOT NULL,          -- nombre, código y categoría sin tildes, para buscar
+        creado_en             TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      -- El código no se repite, pero puede faltar: índice único PARCIAL
+      CREATE UNIQUE INDEX productos_codigo_unico ON productos (codigo) WHERE codigo IS NOT NULL;
+
+      -- El stock NO se guarda en el producto: es la suma de sus movimientos vigentes.
+      CREATE TABLE ventas (
+        id             INTEGER PRIMARY KEY,
+        fecha          TEXT    NOT NULL,
+        total_centavos INTEGER NOT NULL CHECK (total_centavos >= 0),
+        metodo         TEXT    NOT NULL CHECK (metodo IN ('efectivo', 'transferencia', 'debito', 'credito')),
+        usuario_id     INTEGER REFERENCES usuarios (id),
+        anulada        INTEGER NOT NULL DEFAULT 0 CHECK (anulada IN (0, 1)),
+        anulada_en     TEXT,
+        creado_en      TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      CREATE INDEX ventas_por_fecha ON ventas (fecha);
+
+      -- Precio y costo quedan como "foto" del momento: cambiar el precio después no toca las ventas viejas.
+      CREATE TABLE venta_items (
+        id                INTEGER PRIMARY KEY,
+        venta_id          INTEGER NOT NULL REFERENCES ventas (id),
+        producto_id       INTEGER NOT NULL REFERENCES productos (id),
+        nombre            TEXT    NOT NULL,
+        cantidad_milesimas INTEGER NOT NULL CHECK (cantidad_milesimas > 0),
+        precio_centavos   INTEGER NOT NULL,              -- por unidad o por kilo
+        costo_centavos    INTEGER NOT NULL,
+        subtotal_centavos INTEGER NOT NULL CHECK (subtotal_centavos >= 0)
+      );
+      CREATE INDEX venta_items_por_venta ON venta_items (venta_id);
+
+      CREATE TABLE movimientos_stock (
+        id                 INTEGER PRIMARY KEY,
+        producto_id        INTEGER NOT NULL REFERENCES productos (id),
+        tipo               TEXT    NOT NULL CHECK (tipo IN ('inicial', 'compra', 'venta', 'merma', 'ajuste')),
+        cantidad_milesimas INTEGER NOT NULL CHECK (cantidad_milesimas <> 0),   -- + entra, − sale
+        costo_centavos     INTEGER,
+        motivo             TEXT    NOT NULL DEFAULT '',
+        fecha              TEXT    NOT NULL,
+        venta_id           INTEGER REFERENCES ventas (id),
+        usuario_id         INTEGER REFERENCES usuarios (id),
+        anulado            INTEGER NOT NULL DEFAULT 0 CHECK (anulado IN (0, 1)),
+        creado_en          TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+        CHECK (tipo <> 'venta' OR venta_id IS NOT NULL)
+      );
+      CREATE INDEX movimientos_por_producto ON movimientos_stock (producto_id, fecha);
+      CREATE INDEX movimientos_por_venta ON movimientos_stock (venta_id) WHERE venta_id IS NOT NULL;
+    `,
+  },
 ];

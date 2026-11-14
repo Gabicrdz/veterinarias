@@ -1,0 +1,241 @@
+// Conecta los pedidos de la ventana (ipcRenderer.invoke) con los servicios.
+// Cada canal:
+//   1. revisa QUIÉN pide (sesión, rol y vínculo con un profesional). Los
+//      permisos se controlan ACÁ, en el main: esconder un botón en la ventana
+//      no alcanza, porque la ventana podría pedir cualquier cosa;
+//   2. valida lo que llega con Zod ANTES de tocar la base de datos.
+import { ipcMain, shell } from 'electron';
+import { z, type ZodType } from 'zod';
+import { CANALES } from '@compartido/api';
+import {
+  esquemaBloqueo,
+  esquemaBuscarProductos,
+  esquemaMovimiento,
+  esquemaProducto,
+  esquemaVenta,
+  esquemaBuscarDuenos,
+  esquemaBuscarMascotas,
+  esquemaCobro,
+  esquemaAplicacion,
+  esquemaConsulta,
+  esquemaMensajeVacuna,
+  esquemaPendientes,
+  esquemaVeterinaria,
+  esquemaEstado,
+  esquemaFecha,
+  esquemaMensajeRecordatorio,
+  esquemaMoverTurno,
+  esquemaMascota,
+  esquemaPeriodo,
+  esquemaPin,
+  esquemaProfesional,
+  esquemaRango,
+  esquemaTurno,
+  esquemaUsuario,
+  id,
+} from '@compartido/esquemas';
+import type { InfoSistema, Respuesta, Usuario } from '@compartido/tipos';
+import { obtenerDb } from './db/conexion';
+import { ErrorDeUsuario } from './servicios/errores';
+import { buscarDuenos, buscarMascotas, cambiarActivoMascota, guardarMascota } from './servicios/mascotas';
+import { cambiarActivoProfesional, guardarProfesional, listarProfesionales } from './servicios/profesionales';
+import { bloqueosProximos, borrarBloqueo, crearBloqueo } from './servicios/bloqueos';
+import { guardarVeterinaria, guardarMensajeRecordatorio, guardarMensajeVacuna, obtenerVeterinaria, resumen } from './servicios/veterinaria';
+import { anularAplicacion, cantidadVencidas, carnetDeMascota, dosisPendientes, enlaceAviso, marcarAvisado, registrarAplicacion } from './servicios/vacunas';
+import { guardarConsulta, historiaClinica } from './servicios/consultas';
+import { buscarProductos, cambiarActivoProducto, cantidadParaReponer, guardarProducto, movimientosDeProducto, registrarMovimiento } from './servicios/productos';
+import { anularVenta, registrarVenta, ventasDelDia } from './servicios/ventas';
+import { anularCobro, registrarCobro } from './servicios/cobros';
+import { enlaceRecordatorio, marcarRecordado } from './servicios/recordatorios';
+import { cargarEjemplo, cargarProductosEjemplo, cargarTurnosEjemplo, cargarVacunasEjemploSueltas } from './servicios/ejemplo';
+import { darDeBajaUsuario, guardarUsuario, hayUsuarios, listarUsuarios } from './servicios/usuarios';
+import { reporte } from './servicios/reportes';
+import { abrirCarpetaCopias, elegirCopia, estadoCopias, exportarCopia, exportarAtenciones, restaurarCopiaElegida } from './copias';
+import { cerrarSesion, iniciarSesion, refrescarSesion, requerir, sesionActual, type Permiso } from './servicios/sesion';
+import { agenda, cambiarEstado, darTurno, horariosLibres, moverTurno, proximosLibres, turnosDeMascota } from './servicios/turnos';
+
+/** Convierte cualquier error en un mensaje para la ventana. */
+export function mensajeDeError(error: unknown): string {
+  if (error instanceof ErrorDeUsuario) return error.message;
+  if (error instanceof z.ZodError) return error.issues[0]?.message ?? 'Hay datos inválidos.';
+  console.error(error);
+  return 'Ocurrió un error inesperado. Si se repite, avisale a quien te instaló el sistema.';
+}
+
+/**
+ * Registra un canal con su permiso ('libre', 'sesion', 'clinica' o 'admin').
+ * `esquema` describe los argumentos que manda la ventana (como lista);
+ * `fn` los recibe ya validados y, al final, el usuario de la sesión.
+ */
+export function manejar<E extends ZodType<unknown[]>, T>(
+  canal: string,
+  permiso: Permiso,
+  esquema: E,
+  fn: (...args: [...z.output<E>, Usuario]) => T | Promise<T>,
+): void {
+  ipcMain.handle(canal, async (_evento, ...args: unknown[]): Promise<Respuesta<T>> => {
+    try {
+      const usuario = requerir(permiso);
+      const validados = esquema.parse(args) as z.output<E>;
+      return { ok: true, datos: await fn(...validados, usuario as Usuario) };
+    } catch (error) {
+      return { ok: false, error: mensajeDeError(error) };
+    }
+  });
+}
+
+const nada = z.tuple([]);
+const activo = z.boolean();
+
+export function registrarCanales(info: () => InfoSistema): void {
+  const db = () => obtenerDb();
+
+  // ── Sesión y usuarios ──
+  manejar(CANALES.sesionActual, 'libre', nada, () => sesionActual());
+  manejar(CANALES.sesionIniciar, 'libre', z.tuple([id, z.string().max(10)]), (uid, pin) => iniciarSesion(db(), uid, pin));
+  manejar(CANALES.sesionCerrar, 'libre', nada, () => {
+    cerrarSesion();
+    return null;
+  });
+  manejar(CANALES.usuariosParaIngresar, 'libre', nada, () => listarUsuarios(db()));
+  manejar(CANALES.usuariosCrearPrimero, 'libre', z.tuple([z.string(), esquemaPin]), (nombre, pin) => {
+    // Solo sirve la primera vez: después, los usuarios los crea administración
+    if (hayUsuarios(db())) throw new ErrorDeUsuario('Ya hay usuarios creados. Ingresá con tu PIN.');
+    const nuevo = guardarUsuario(db(), esquemaUsuario.parse({ nombre, rol: 'admin', pin }));
+    return iniciarSesion(db(), nuevo, pin);
+  });
+  manejar(CANALES.usuariosListar, 'admin', nada, () => listarUsuarios(db()));
+  manejar(CANALES.usuariosGuardar, 'admin', z.tuple([esquemaUsuario]), (datos) => {
+    const uid = guardarUsuario(db(), datos);
+    refrescarSesion(listarUsuarios(db()).find((u) => u.id === uid) ?? null);
+    return uid;
+  });
+  manejar(CANALES.usuariosBaja, 'admin', z.tuple([id]), (uid, yo) => {
+    darDeBajaUsuario(db(), uid, yo.id);
+    return null;
+  });
+
+  // ── Mascotas ──
+  manejar(CANALES.mascotasBuscar, 'sesion', z.tuple([esquemaBuscarMascotas]), (filtro) => buscarMascotas(db(), filtro));
+  manejar(CANALES.duenosBuscar, 'sesion', z.tuple([esquemaBuscarDuenos]), (filtro) => buscarDuenos(db(), filtro));
+  manejar(CANALES.mascotasGuardar, 'sesion', z.tuple([esquemaMascota]), (datos) => guardarMascota(db(), datos));
+  manejar(CANALES.mascotasActivo, 'sesion', z.tuple([id, activo]), (pid, a) => {
+    cambiarActivoMascota(db(), pid, a);
+    return null;
+  });
+
+  // ── Profesionales y días sin atención (la configuración, solo administración) ──
+  manejar(CANALES.profesionalesListar, 'sesion', nada, () => listarProfesionales(db()));
+  manejar(CANALES.profesionalesGuardar, 'admin', z.tuple([esquemaProfesional]), (datos) => guardarProfesional(db(), datos));
+  manejar(CANALES.profesionalesActivo, 'admin', z.tuple([id, activo]), (pid, a) => {
+    cambiarActivoProfesional(db(), pid, a);
+    return null;
+  });
+  manejar(CANALES.bloqueosProximos, 'sesion', nada, () => bloqueosProximos(db()));
+  manejar(CANALES.bloqueosCrear, 'admin', z.tuple([esquemaBloqueo]), (datos) => crearBloqueo(db(), datos));
+  manejar(CANALES.bloqueosBorrar, 'admin', z.tuple([id]), (bid) => {
+    borrarBloqueo(db(), bid);
+    return null;
+  });
+
+  // ── Turnos ──
+  manejar(CANALES.turnosAgenda, 'sesion', z.tuple([esquemaRango]), (rango) => agenda(db(), rango));
+  manejar(CANALES.turnosLibres, 'sesion', z.tuple([id, esquemaFecha]), (pid, fecha) => horariosLibres(db(), pid, fecha));
+  manejar(CANALES.turnosProximosLibres, 'sesion', z.tuple([id]), (pid) => proximosLibres(db(), pid));
+  manejar(CANALES.turnosDar, 'sesion', z.tuple([esquemaTurno]), (datos, yo) => darTurno(db(), datos, new Date(), yo.id));
+  manejar(CANALES.turnosMover, 'sesion', z.tuple([esquemaMoverTurno]), (datos) => {
+    moverTurno(db(), datos);
+    return null;
+  });
+  manejar(CANALES.turnosEstado, 'sesion', z.tuple([id, esquemaEstado]), (tid, estado) => {
+    cambiarEstado(db(), tid, estado);
+    return null;
+  });
+  manejar(CANALES.turnosDeMascota, 'sesion', z.tuple([id]), (pid) => turnosDeMascota(db(), pid));
+  manejar(CANALES.turnosRecordar, 'sesion', z.tuple([id]), async (tid) => {
+    // El enlace lo arma el main con datos de la base; se abre con el navegador o WhatsApp de la compu
+    await shell.openExternal(enlaceRecordatorio(db(), tid));
+    marcarRecordado(db(), tid);
+    return null;
+  });
+
+  // ── Vacunas y desparasitaciones: las ve y las carga quien tenga sesión (recepción también) ──
+  manejar(CANALES.vacunasCarnet, 'sesion', z.tuple([id]), (mid) => carnetDeMascota(db(), mid));
+  manejar(CANALES.vacunasRegistrar, 'sesion', z.tuple([esquemaAplicacion]), (datos, yo) => registrarAplicacion(db(), datos, yo));
+  manejar(CANALES.vacunasAnular, 'sesion', z.tuple([id]), (aid) => {
+    anularAplicacion(db(), aid);
+    return null;
+  });
+  manejar(CANALES.vacunasPendientes, 'sesion', z.tuple([esquemaPendientes]), (filtro) => dosisPendientes(db(), filtro));
+  manejar(CANALES.vacunasVencidas, 'sesion', nada, () => cantidadVencidas(db()));
+  manejar(CANALES.vacunasAvisar, 'sesion', z.tuple([id]), async (aid) => {
+    // Igual que el recordatorio de turnos: el main arma el enlace con datos de la base y lo abre
+    await shell.openExternal(enlaceAviso(db(), aid));
+    marcarAvisado(db(), aid);
+    return null;
+  });
+
+  // ── Historia clínica: solo usuarios vinculados a un veterinario ──
+  manejar(CANALES.consultasHistoria, 'clinica', z.tuple([id]), (pid) => historiaClinica(db(), pid));
+  manejar(CANALES.consultasGuardar, 'clinica', z.tuple([esquemaConsulta]), (datos, yo) => guardarConsulta(db(), datos, yo));
+
+  // ── Productos y mostrador: ver y vender, cualquiera con sesión; editar precios y ajustar stock, administración ──
+  manejar(CANALES.productosBuscar, 'sesion', z.tuple([esquemaBuscarProductos]), (filtro) => buscarProductos(db(), filtro));
+  manejar(CANALES.productosGuardar, 'admin', z.tuple([esquemaProducto]), (datos, yo) => guardarProducto(db(), datos, yo));
+  manejar(CANALES.productosActivo, 'admin', z.tuple([id, z.boolean()]), (pid, activo) => {
+    cambiarActivoProducto(db(), pid, activo);
+    return null;
+  });
+  // Quién puede cada tipo de movimiento lo decide el servicio: recepción solo registra compras
+  manejar(CANALES.productosMovimiento, 'sesion', z.tuple([esquemaMovimiento]), (datos, yo) => {
+    registrarMovimiento(db(), datos, yo);
+    return null;
+  });
+  manejar(CANALES.productosMovimientos, 'sesion', z.tuple([id]), (pid) => movimientosDeProducto(db(), pid));
+  manejar(CANALES.productosParaReponer, 'sesion', nada, () => cantidadParaReponer(db()));
+  manejar(CANALES.ventasRegistrar, 'sesion', z.tuple([esquemaVenta]), (datos, yo) => registrarVenta(db(), datos, yo));
+  manejar(CANALES.ventasAnular, 'sesion', z.tuple([id]), (vid, yo) => {
+    anularVenta(db(), vid, yo);
+    return null;
+  });
+  manejar(CANALES.ventasDelDia, 'sesion', z.tuple([esquemaFecha]), (fecha) => ventasDelDia(db(), fecha));
+
+  // ── Cobros ──
+  manejar(CANALES.cobrosRegistrar, 'sesion', z.tuple([esquemaCobro]), (datos, yo) => registrarCobro(db(), datos, new Date(), yo.id));
+  manejar(CANALES.cobrosAnular, 'sesion', z.tuple([id]), (cid, yo) => {
+    anularCobro(db(), cid, yo);
+    return null;
+  });
+
+  // ── Veterinaria y sistema ──
+  // El nombre de la veterinaria se ve en la pantalla de ingreso: es 'libre'
+  manejar(CANALES.veterinariaObtener, 'libre', nada, () => obtenerVeterinaria(db()));
+  manejar(CANALES.veterinariaGuardar, 'admin', z.tuple([esquemaVeterinaria]), (datos) => {
+    guardarVeterinaria(db(), datos);
+    return null;
+  });
+  manejar(CANALES.veterinariaMensaje, 'admin', z.tuple([esquemaMensajeRecordatorio]), (mensaje) => {
+    guardarMensajeRecordatorio(db(), mensaje);
+    return null;
+  });
+  manejar(CANALES.veterinariaMensajeVacuna, 'admin', z.tuple([esquemaMensajeVacuna]), (mensaje) => {
+    guardarMensajeVacuna(db(), mensaje);
+    return null;
+  });
+  manejar(CANALES.sistemaInfo, 'sesion', nada, info);
+  manejar(CANALES.sistemaResumen, 'sesion', nada, () => resumen(db()));
+  // ── Reportes y copias (solo administración) ──
+  manejar(CANALES.reportesObtener, 'admin', z.tuple([esquemaPeriodo]), (periodo) => reporte(db(), periodo));
+  manejar(CANALES.reportesAtenciones, 'admin', z.tuple([esquemaPeriodo]), (periodo) => exportarAtenciones(periodo));
+  manejar(CANALES.copiasEstado, 'admin', nada, estadoCopias);
+  manejar(CANALES.copiasExportar, 'admin', nada, exportarCopia);
+  manejar(CANALES.copiasElegir, 'admin', nada, elegirCopia);
+  manejar(CANALES.copiasRestaurar, 'admin', nada, restaurarCopiaElegida);
+  manejar(CANALES.copiasAbrirCarpeta, 'admin', nada, abrirCarpetaCopias);
+
+  manejar(CANALES.sistemaEjemplo, 'admin', nada, () => cargarEjemplo(db()));
+  manejar(CANALES.sistemaEjemploTurnos, 'admin', nada, () => cargarTurnosEjemplo(db()));
+  manejar(CANALES.sistemaEjemploVacunas, 'admin', nada, () => cargarVacunasEjemploSueltas(db()));
+  manejar(CANALES.sistemaEjemploProductos, 'admin', nada, () => cargarProductosEjemplo(db()));
+}
+

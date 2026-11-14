@@ -162,6 +162,26 @@ export function reporte(db: Lector, periodo: Periodo): Reporte {
     )
     .all(...p) as Reporte['faltadores'];
 
+  // ---- Ventas del mostrador (productos): aparte de las consultas, para no mezclar los números ----
+  const v = c
+    .prepare(
+      `SELECT count(DISTINCT ve.id) AS ventas, coalesce(sum(i.subtotal_centavos), 0) AS total,
+              coalesce(sum(i.subtotal_centavos - round(i.cantidad_milesimas * i.costo_centavos / 1000.0)), 0) AS ganancia
+       FROM ventas ve JOIN venta_items i ON i.venta_id = ve.id
+       WHERE ve.anulada = 0 AND ve.fecha BETWEEN ? AND ?`,
+    )
+    .get(...p) as { ventas: number; total: number; ganancia: number };
+  const masVendidos = c
+    .prepare(
+      `SELECT i.producto_id AS productoId, pr.nombre, pr.unidad, sum(i.cantidad_milesimas) AS cantidadMilesimas, sum(i.subtotal_centavos) AS totalCentavos
+       FROM ventas ve JOIN venta_items i ON i.venta_id = ve.id JOIN productos pr ON pr.id = i.producto_id
+       WHERE ve.anulada = 0 AND ve.fecha BETWEEN ? AND ?
+       GROUP BY i.producto_id
+       ORDER BY totalCentavos DESC, pr.nombre
+       LIMIT 5`,
+    )
+    .all(...p) as Reporte['productos']['masVendidos'];
+
   return {
     desde,
     hasta,
@@ -180,6 +200,7 @@ export function reporte(db: Lector, periodo: Periodo): Reporte {
     porProfesional,
     porEspecie,
     porDia,
+    productos: { ventas: v.ventas, totalCentavos: v.total, gananciaCentavos: v.ganancia, masVendidos },
     faltadores,
   };
 }

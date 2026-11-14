@@ -1,8 +1,8 @@
 // Ajustes: datos de la veterinaria, usuarios, copias de seguridad y el mensaje de WhatsApp.
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { NOMBRE_DIA, esquemaVeterinaria, esquemaMensajeRecordatorio, type DatosVeterinaria } from '@compartido/esquemas';
-import { MARCADORES, armarMensaje } from '@compartido/whatsapp';
+import { NOMBRE_DIA, esquemaVeterinaria, esquemaMensajeRecordatorio, esquemaMensajeVacuna, type DatosVeterinaria } from '@compartido/esquemas';
+import { MARCADORES, MARCADORES_VACUNA, armarMensaje, armarMensajeVacuna } from '@compartido/whatsapp';
 import { Button } from '@/components/ui/button';
 import { Campo } from '@/components/ui/campo';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ export function PaginaAjustes() {
       <TarjetaUsuarios />
       <TarjetaCopias />
       <TarjetaRecordatorio />
+      <TarjetaAvisoVacuna />
       {info.data && (
         <p className="text-center text-[13px] text-tinta-suave">
           Veterinaria versión {info.data.version} · Base de datos: <span className="break-all">{info.data.baseDeDatos}</span>
@@ -81,15 +82,34 @@ function TarjetaVeterinaria() {
 }
 
 /** El texto del WhatsApp, con marcas que se reemplazan por los datos de cada turno. */
-function TarjetaRecordatorio() {
-  const veterinaria = useVeterinaria();
+/** Un mensaje de WhatsApp editable: se escribe a la izquierda y a la derecha se ve cómo le llega al dueño. */
+function TarjetaMensaje({
+  titulo,
+  descripcion,
+  actual,
+  guardarMensaje,
+  esquema,
+  marcadores,
+  ejemplo,
+  avisoGuardado,
+}: {
+  titulo: string;
+  descripcion: string;
+  /** El mensaje guardado (undefined mientras carga). */
+  actual: string | undefined;
+  guardarMensaje: (mensaje: string) => Promise<unknown>;
+  esquema: typeof esquemaMensajeRecordatorio;
+  marcadores: { marca: string; explicacion: string }[];
+  ejemplo: (texto: string) => string;
+  avisoGuardado: string;
+}) {
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
   const campo = useRef<HTMLTextAreaElement>(null);
-  const guardar = useAccion((m: string) => desenvolver(turnos().veterinaria.guardarMensaje(m)), [CLAVES.veterinaria], 'Mensaje del recordatorio guardado');
+  const guardar = useAccion(guardarMensaje, [CLAVES.veterinaria], avisoGuardado);
   useEffect(() => {
-    if (veterinaria.data) setTexto(veterinaria.data.mensajeRecordatorio);
-  }, [veterinaria.data]);
+    if (actual !== undefined) setTexto(actual);
+  }, [actual]);
 
   // Pone la marca donde está el cursor
   function insertar(marca: string) {
@@ -105,33 +125,21 @@ function TarjetaRecordatorio() {
 
   function enviar(e: FormEvent) {
     e.preventDefault();
-    const r = esquemaMensajeRecordatorio.safeParse(texto);
+    const r = esquema.safeParse(texto);
     if (!r.success) return setError(r.error.issues[0]?.message ?? 'Revisá el mensaje.');
     setError('');
     guardar.mutate(r.data, { onError: (err) => setError(err.message) });
   }
 
-  const manana = new Date(Date.now() + 86_400_000);
-  const ejemplo = armarMensaje(texto, {
-    nombre: 'Juan',
-    apellido: 'Pérez',
-    mascota: 'Firulais',
-    profesional: 'Dra. Laura Benítez',
-    dia: `${NOMBRE_DIA[manana.getDay() === 0 ? 7 : manana.getDay()]} ${String(manana.getDate()).padStart(2, '0')}/${String(manana.getMonth() + 1).padStart(2, '0')}`,
-    hora: '08:20',
-    veterinaria: veterinaria.data?.nombreVeterinaria ?? '',
-    direccion: veterinaria.data?.direccion ?? '',
-  });
-
   return (
     <section className="rounded-lg border border-linea bg-superficie p-6">
-      <h2 className="font-display text-xl font-semibold">Recordatorio por WhatsApp</h2>
-      <p className="text-[14px] text-tinta-suave">El mensaje que se abre en WhatsApp desde Recepción. Tocá una marca para agregarla donde está el cursor.</p>
+      <h2 className="font-display text-xl font-semibold">{titulo}</h2>
+      <p className="text-[14px] text-tinta-suave">{descripcion} Tocá una marca para agregarla donde está el cursor.</p>
       <form onSubmit={enviar} noValidate className="mt-4 grid grid-cols-2 gap-6">
         <div className="flex flex-col gap-3">
-          <Textarea ref={campo} aria-label="Mensaje del recordatorio" rows={6} maxLength={600} value={texto} onChange={(e) => { setTexto(e.target.value); setError(''); }} />
+          <Textarea ref={campo} aria-label={titulo} rows={6} maxLength={600} value={texto} onChange={(e) => { setTexto(e.target.value); setError(''); }} />
           <div className="flex flex-wrap gap-1.5">
-            {MARCADORES.map((m) => (
+            {marcadores.map((m) => (
               <button
                 key={m.marca}
                 type="button"
@@ -144,7 +152,7 @@ function TarjetaRecordatorio() {
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <Button type="submit" disabled={guardar.isPending || texto === veterinaria.data?.mensajeRecordatorio}>
+            <Button type="submit" disabled={guardar.isPending || texto === actual}>
               Guardar mensaje
             </Button>
             {error && (
@@ -156,9 +164,63 @@ function TarjetaRecordatorio() {
         </div>
         <div>
           <p className="mb-2 text-sm font-medium">Así le llega al dueño</p>
-          <p className="rounded-lg rounded-tl-none bg-[#dcf8c6] px-4 py-3 text-[14px] leading-relaxed whitespace-pre-line text-[#111b21]">{ejemplo || ' '}</p>
+          <p className="rounded-lg rounded-tl-none bg-[#dcf8c6] px-4 py-3 text-[14px] leading-relaxed whitespace-pre-line text-[#111b21]">{ejemplo(texto) || ' '}</p>
         </div>
       </form>
     </section>
+  );
+}
+
+function TarjetaRecordatorio() {
+  const veterinaria = useVeterinaria();
+  const manana = new Date(Date.now() + 86_400_000);
+  return (
+    <TarjetaMensaje
+      titulo="Recordatorio de turno por WhatsApp"
+      descripcion="El mensaje que se abre en WhatsApp desde Recepción."
+      actual={veterinaria.data?.mensajeRecordatorio}
+      guardarMensaje={(m) => desenvolver(turnos().veterinaria.guardarMensaje(m))}
+      esquema={esquemaMensajeRecordatorio}
+      marcadores={MARCADORES}
+      avisoGuardado="Mensaje del recordatorio guardado"
+      ejemplo={(texto) =>
+        armarMensaje(texto, {
+          nombre: 'Juan',
+          apellido: 'Pérez',
+          mascota: 'Firulais',
+          profesional: 'Dra. Laura Benítez',
+          dia: `${NOMBRE_DIA[manana.getDay() === 0 ? 7 : manana.getDay()]} ${String(manana.getDate()).padStart(2, '0')}/${String(manana.getMonth() + 1).padStart(2, '0')}`,
+          hora: '08:20',
+          veterinaria: veterinaria.data?.nombreVeterinaria ?? '',
+          direccion: veterinaria.data?.direccion ?? '',
+        })
+      }
+    />
+  );
+}
+
+function TarjetaAvisoVacuna() {
+  const veterinaria = useVeterinaria();
+  return (
+    <TarjetaMensaje
+      titulo="Aviso de vacuna por WhatsApp"
+      descripcion="El mensaje que se abre desde la pantalla Vacunas cuando a una mascota le toca una dosis."
+      actual={veterinaria.data?.mensajeVacuna}
+      guardarMensaje={(m) => desenvolver(turnos().veterinaria.guardarMensajeVacuna(m))}
+      esquema={esquemaMensajeVacuna}
+      marcadores={MARCADORES_VACUNA}
+      avisoGuardado="Mensaje del aviso de vacuna guardado"
+      ejemplo={(texto) =>
+        armarMensajeVacuna(texto, {
+          nombre: 'Juan',
+          apellido: 'Pérez',
+          mascota: 'Firulais',
+          vacuna: 'Antirrábica',
+          fecha: '20/11/2026',
+          veterinaria: veterinaria.data?.nombreVeterinaria ?? '',
+          direccion: veterinaria.data?.direccion ?? '',
+        })
+      }
+    />
   );
 }

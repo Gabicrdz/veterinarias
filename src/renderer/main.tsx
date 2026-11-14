@@ -11,6 +11,9 @@ import { PaginaAgenda } from '@/features/agenda/pagina-agenda';
 import { PaginaMascotas } from '@/features/mascotas/pagina-mascotas';
 import { PaginaRecepcion } from '@/features/recepcion/pagina-recepcion';
 import { PaginaReportes } from '@/features/reportes/pagina-reportes';
+import { PaginaVacunas } from '@/features/vacunas/pagina-vacunas';
+import { PaginaMostrador } from '@/features/mostrador/pagina-mostrador';
+import { PaginaProductos } from '@/features/productos/pagina-productos';
 import { PaginaProfesionales } from '@/features/profesionales/pagina-profesionales';
 import { PaginaAjustes } from '@/features/ajustes/pagina-ajustes';
 import { PantallaIngreso } from '@/features/sesion/pantalla-ingreso';
@@ -26,6 +29,9 @@ const router = createHashRouter([
       { index: true, element: <PaginaAgenda /> },
       { path: 'recepcion', element: <PaginaRecepcion /> },
       { path: 'mascotas', element: <PaginaMascotas /> },
+      { path: 'vacunas', element: <PaginaVacunas /> },
+      { path: 'mostrador', element: <PaginaMostrador /> },
+      { path: 'productos', element: <PaginaProductos /> },
       { path: 'profesionales', element: <SoloAdmin><PaginaProfesionales /></SoloAdmin> },
       { path: 'reportes', element: <SoloAdmin><PaginaReportes /></SoloAdmin> },
       { path: 'ajustes', element: <SoloAdmin><PaginaAjustes /></SoloAdmin> },

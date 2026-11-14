@@ -17,6 +17,10 @@ export const CLAVES = {
   libres: ['libres'],
   turnosMascota: ['turnos-mascota'],
   historia: ['historia'],
+  vacunas: ['vacunas'],
+  productos: ['productos'],
+  ventas: ['ventas'],
+  reporte: ['reporte'],
   resumen: ['resumen'],
 } as const;
 

@@ -9,10 +9,17 @@ import { z, type ZodType } from 'zod';
 import { CANALES } from '@compartido/api';
 import {
   esquemaBloqueo,
+  esquemaBuscarProductos,
+  esquemaMovimiento,
+  esquemaProducto,
+  esquemaVenta,
   esquemaBuscarDuenos,
   esquemaBuscarMascotas,
   esquemaCobro,
+  esquemaAplicacion,
   esquemaConsulta,
+  esquemaMensajeVacuna,
+  esquemaPendientes,
   esquemaVeterinaria,
   esquemaEstado,
   esquemaFecha,
@@ -33,11 +40,14 @@ import { ErrorDeUsuario } from './servicios/errores';
 import { buscarDuenos, buscarMascotas, cambiarActivoMascota, guardarMascota } from './servicios/mascotas';
 import { cambiarActivoProfesional, guardarProfesional, listarProfesionales } from './servicios/profesionales';
 import { bloqueosProximos, borrarBloqueo, crearBloqueo } from './servicios/bloqueos';
-import { guardarVeterinaria, guardarMensajeRecordatorio, obtenerVeterinaria, resumen } from './servicios/veterinaria';
+import { guardarVeterinaria, guardarMensajeRecordatorio, guardarMensajeVacuna, obtenerVeterinaria, resumen } from './servicios/veterinaria';
+import { anularAplicacion, cantidadVencidas, carnetDeMascota, dosisPendientes, enlaceAviso, marcarAvisado, registrarAplicacion } from './servicios/vacunas';
 import { guardarConsulta, historiaClinica } from './servicios/consultas';
+import { buscarProductos, cambiarActivoProducto, cantidadParaReponer, guardarProducto, movimientosDeProducto, registrarMovimiento } from './servicios/productos';
+import { anularVenta, registrarVenta, ventasDelDia } from './servicios/ventas';
 import { anularCobro, registrarCobro } from './servicios/cobros';
 import { enlaceRecordatorio, marcarRecordado } from './servicios/recordatorios';
-import { cargarEjemplo, cargarTurnosEjemplo } from './servicios/ejemplo';
+import { cargarEjemplo, cargarProductosEjemplo, cargarTurnosEjemplo, cargarVacunasEjemploSueltas } from './servicios/ejemplo';
 import { darDeBajaUsuario, guardarUsuario, hayUsuarios, listarUsuarios } from './servicios/usuarios';
 import { reporte } from './servicios/reportes';
 import { abrirCarpetaCopias, elegirCopia, estadoCopias, exportarCopia, exportarAtenciones, restaurarCopiaElegida } from './copias';
@@ -149,9 +159,46 @@ export function registrarCanales(info: () => InfoSistema): void {
     return null;
   });
 
+  // ── Vacunas y desparasitaciones: las ve y las carga quien tenga sesión (recepción también) ──
+  manejar(CANALES.vacunasCarnet, 'sesion', z.tuple([id]), (mid) => carnetDeMascota(db(), mid));
+  manejar(CANALES.vacunasRegistrar, 'sesion', z.tuple([esquemaAplicacion]), (datos, yo) => registrarAplicacion(db(), datos, yo));
+  manejar(CANALES.vacunasAnular, 'sesion', z.tuple([id]), (aid) => {
+    anularAplicacion(db(), aid);
+    return null;
+  });
+  manejar(CANALES.vacunasPendientes, 'sesion', z.tuple([esquemaPendientes]), (filtro) => dosisPendientes(db(), filtro));
+  manejar(CANALES.vacunasVencidas, 'sesion', nada, () => cantidadVencidas(db()));
+  manejar(CANALES.vacunasAvisar, 'sesion', z.tuple([id]), async (aid) => {
+    // Igual que el recordatorio de turnos: el main arma el enlace con datos de la base y lo abre
+    await shell.openExternal(enlaceAviso(db(), aid));
+    marcarAvisado(db(), aid);
+    return null;
+  });
+
   // ── Historia clínica: solo usuarios vinculados a un veterinario ──
   manejar(CANALES.consultasHistoria, 'clinica', z.tuple([id]), (pid) => historiaClinica(db(), pid));
   manejar(CANALES.consultasGuardar, 'clinica', z.tuple([esquemaConsulta]), (datos, yo) => guardarConsulta(db(), datos, yo));
+
+  // ── Productos y mostrador: ver y vender, cualquiera con sesión; editar precios y ajustar stock, administración ──
+  manejar(CANALES.productosBuscar, 'sesion', z.tuple([esquemaBuscarProductos]), (filtro) => buscarProductos(db(), filtro));
+  manejar(CANALES.productosGuardar, 'admin', z.tuple([esquemaProducto]), (datos, yo) => guardarProducto(db(), datos, yo));
+  manejar(CANALES.productosActivo, 'admin', z.tuple([id, z.boolean()]), (pid, activo) => {
+    cambiarActivoProducto(db(), pid, activo);
+    return null;
+  });
+  // Quién puede cada tipo de movimiento lo decide el servicio: recepción solo registra compras
+  manejar(CANALES.productosMovimiento, 'sesion', z.tuple([esquemaMovimiento]), (datos, yo) => {
+    registrarMovimiento(db(), datos, yo);
+    return null;
+  });
+  manejar(CANALES.productosMovimientos, 'sesion', z.tuple([id]), (pid) => movimientosDeProducto(db(), pid));
+  manejar(CANALES.productosParaReponer, 'sesion', nada, () => cantidadParaReponer(db()));
+  manejar(CANALES.ventasRegistrar, 'sesion', z.tuple([esquemaVenta]), (datos, yo) => registrarVenta(db(), datos, yo));
+  manejar(CANALES.ventasAnular, 'sesion', z.tuple([id]), (vid, yo) => {
+    anularVenta(db(), vid, yo);
+    return null;
+  });
+  manejar(CANALES.ventasDelDia, 'sesion', z.tuple([esquemaFecha]), (fecha) => ventasDelDia(db(), fecha));
 
   // ── Cobros ──
   manejar(CANALES.cobrosRegistrar, 'sesion', z.tuple([esquemaCobro]), (datos, yo) => registrarCobro(db(), datos, new Date(), yo.id));
@@ -171,6 +218,10 @@ export function registrarCanales(info: () => InfoSistema): void {
     guardarMensajeRecordatorio(db(), mensaje);
     return null;
   });
+  manejar(CANALES.veterinariaMensajeVacuna, 'admin', z.tuple([esquemaMensajeVacuna]), (mensaje) => {
+    guardarMensajeVacuna(db(), mensaje);
+    return null;
+  });
   manejar(CANALES.sistemaInfo, 'sesion', nada, info);
   manejar(CANALES.sistemaResumen, 'sesion', nada, () => resumen(db()));
   // ── Reportes y copias (solo administración) ──
@@ -184,5 +235,7 @@ export function registrarCanales(info: () => InfoSistema): void {
 
   manejar(CANALES.sistemaEjemplo, 'admin', nada, () => cargarEjemplo(db()));
   manejar(CANALES.sistemaEjemploTurnos, 'admin', nada, () => cargarTurnosEjemplo(db()));
+  manejar(CANALES.sistemaEjemploVacunas, 'admin', nada, () => cargarVacunasEjemploSueltas(db()));
+  manejar(CANALES.sistemaEjemploProductos, 'admin', nada, () => cargarProductosEjemplo(db()));
 }
 

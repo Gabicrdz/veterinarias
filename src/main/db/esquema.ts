@@ -144,3 +144,79 @@ export const usuarios = sqliteTable('usuarios', {
   activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
   creadoEn: text('creado_en').notNull().default(ahora),
 });
+
+export const aplicaciones = sqliteTable('aplicaciones', {
+  id: integer('id').primaryKey(),
+  mascotaId: integer('mascota_id')
+    .notNull()
+    .references(() => mascotas.id),
+  tipo: text('tipo', { enum: ['vacuna', 'desparasitacion'] }).notNull(),
+  nombre: text('nombre').notNull(),
+  clave: text('clave').notNull(),
+  fecha: text('fecha').notNull(),
+  proximaDosis: text('proxima_dosis'),
+  lote: text('lote').notNull().default(''),
+  notas: text('notas').notNull().default(''),
+  profesionalId: integer('profesional_id').references(() => profesionales.id),
+  usuarioId: integer('usuario_id').references(() => usuarios.id),
+  avisadoEn: text('avisado_en'),
+  anulado: integer('anulado', { mode: 'boolean' }).notNull().default(false),
+  anuladoEn: text('anulado_en'),
+  creadoEn: text('creado_en').notNull().default(ahora),
+});
+
+export const productos = sqliteTable('productos', {
+  id: integer('id').primaryKey(),
+  codigo: text('codigo'),
+  nombre: text('nombre').notNull(),
+  categoria: text('categoria', { enum: ['alimento', 'medicamento', 'higiene', 'accesorio', 'otro'] }).notNull(),
+  unidad: text('unidad', { enum: ['unidad', 'kg'] }).notNull().default('unidad'),
+  costoCentavos: integer('costo_centavos').notNull().default(0),
+  precioCentavos: integer('precio_centavos').notNull(),
+  stockMinimoMilesimas: integer('stock_minimo_milesimas').notNull().default(0),
+  activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+  busqueda: text('busqueda').notNull(),
+  creadoEn: text('creado_en').notNull().default(ahora),
+});
+
+export const ventas = sqliteTable('ventas', {
+  id: integer('id').primaryKey(),
+  fecha: text('fecha').notNull(),
+  totalCentavos: integer('total_centavos').notNull(),
+  metodo: text('metodo', { enum: ['efectivo', 'transferencia', 'debito', 'credito'] }).notNull(),
+  usuarioId: integer('usuario_id').references(() => usuarios.id),
+  anulada: integer('anulada', { mode: 'boolean' }).notNull().default(false),
+  anuladaEn: text('anulada_en'),
+  creadoEn: text('creado_en').notNull().default(ahora),
+});
+
+export const ventaItems = sqliteTable('venta_items', {
+  id: integer('id').primaryKey(),
+  ventaId: integer('venta_id')
+    .notNull()
+    .references(() => ventas.id),
+  productoId: integer('producto_id')
+    .notNull()
+    .references(() => productos.id),
+  nombre: text('nombre').notNull(),
+  cantidadMilesimas: integer('cantidad_milesimas').notNull(),
+  precioCentavos: integer('precio_centavos').notNull(),
+  costoCentavos: integer('costo_centavos').notNull(),
+  subtotalCentavos: integer('subtotal_centavos').notNull(),
+});
+
+export const movimientosStock = sqliteTable('movimientos_stock', {
+  id: integer('id').primaryKey(),
+  productoId: integer('producto_id')
+    .notNull()
+    .references(() => productos.id),
+  tipo: text('tipo', { enum: ['inicial', 'compra', 'venta', 'merma', 'ajuste'] }).notNull(),
+  cantidadMilesimas: integer('cantidad_milesimas').notNull(),
+  costoCentavos: integer('costo_centavos'),
+  motivo: text('motivo').notNull().default(''),
+  fecha: text('fecha').notNull(),
+  ventaId: integer('venta_id').references(() => ventas.id),
+  usuarioId: integer('usuario_id').references(() => usuarios.id),
+  anulado: integer('anulado', { mode: 'boolean' }).notNull().default(false),
+  creadoEn: text('creado_en').notNull().default(ahora),
+});

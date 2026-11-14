@@ -9,6 +9,7 @@ import { FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { NOMBRE_ESPECIE, NOMBRE_METODO, type DatosPeriodo } from '@compartido/esquemas';
 import { pesos } from '@compartido/dinero';
+import { cantidadConUnidad } from '@compartido/productos';
 import type { Reporte } from '@compartido/tipos';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -187,13 +188,45 @@ function Contenido({ r, periodo }: { r: Reporte; periodo: DatosPeriodo }) {
         </table>
       </Seccion>
 
+      <Seccion titulo="Venta de productos" descripcion="Lo vendido en el mostrador (sin las ventas anuladas). La ganancia es precio menos costo del momento de cada venta.">
+        {r.productos.ventas === 0 ? (
+          <p className="text-[14px] text-tinta-suave">No hubo ventas de productos en este período.</p>
+        ) : (
+          <div className="grid grid-cols-[1fr_1.4fr] gap-8">
+            <dl className="flex flex-col gap-3">
+              <div>
+                <dt className="text-[13px] font-medium text-tinta-suave">Vendido</dt>
+                <dd className="numeros font-display text-[28px] leading-none font-semibold">{pesosCortos(r.productos.totalCentavos)}</dd>
+                <dd className="mt-1 text-[13px] text-tinta-suave">{r.productos.ventas} {r.productos.ventas === 1 ? 'venta' : 'ventas'}</dd>
+              </div>
+              <div>
+                <dt className="text-[13px] font-medium text-tinta-suave">Ganancia</dt>
+                <dd className="numeros font-display text-[28px] leading-none font-semibold text-verde">{pesosCortos(r.productos.gananciaCentavos)}</dd>
+              </div>
+            </dl>
+            <div>
+              <h3 className="mb-2 text-[13px] font-medium text-tinta-suave">Más vendidos</h3>
+              <ul className="divide-y divide-linea">
+                {r.productos.masVendidos.map((p) => (
+                  <li key={p.productoId} className="flex items-center gap-3 py-2">
+                    <span className="min-w-0 flex-1 truncate font-semibold">{p.nombre}</span>
+                    <span className="numeros w-24 text-right text-[14px] text-tinta-suave">{cantidadConUnidad(p.cantidadMilesimas, p.unidad)}</span>
+                    <span className="numeros w-28 text-right text-[14px]">{pesos(p.totalCentavos)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </Seccion>
+
       <div className="grid grid-cols-[1.5fr_1fr] gap-5">
         <Seccion titulo="Por especie" descripcion="Qué animales se atendieron en el período y cuánto se cobró por cada especie.">
           <ul className="divide-y divide-linea">
             {r.porEspecie.map((e) => (
               <li key={e.especie} className="flex items-center gap-3 py-2.5">
                 <span className="min-w-0 flex-1 font-semibold">{NOMBRE_ESPECIE[e.especie]}</span>
-                <span className="numeros w-28 text-right text-[14px] text-tinta-suave">
+                <span className="numeros w-40 text-right text-[14px] text-tinta-suave">
                   {e.atenciones} {e.atenciones === 1 ? 'atención' : 'atenciones'}
                   {atendidasEnTotal > 0 && ` · ${Math.round((e.atenciones / atendidasEnTotal) * 100)} %`}
                 </span>

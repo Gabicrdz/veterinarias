@@ -2,7 +2,7 @@
 // (según el rol), y abajo Ajustes y quién está usando el sistema.
 import { NavLink } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, ChartColumn, ConciergeBell, Lock, Settings, Stethoscope, UsersRound, type LucideIcon } from 'lucide-react';
+import { CalendarDays, ChartColumn, ConciergeBell, Lock, Package, Settings, ShoppingBasket, Stethoscope, Syringe, UsersRound, type LucideIcon } from 'lucide-react';
 import { NOMBRE_ROL } from '@compartido/tipos';
 import { Button } from '@/components/ui/button';
 import { Iniciales } from '@/features/sesion/iniciales';
@@ -10,6 +10,8 @@ import { useBloquear, useUsuario } from '@/features/sesion/consultas';
 import { cn } from '@/lib/utils';
 import { desenvolver, turnos } from '@/lib/api';
 import { fechaLarga } from '@/lib/fechas';
+import { useVencidas } from '@/features/vacunas/consultas-vacunas';
+import { useParaReponer } from '@/features/productos/consultas-productos';
 import { Marca } from './marca';
 
 export function useVeterinaria() {
@@ -20,11 +22,14 @@ const SECCIONES: { ruta: string; nombre: string; icono: LucideIcon; soloAdmin?: 
   { ruta: '/', nombre: 'Agenda', icono: CalendarDays },
   { ruta: '/recepcion', nombre: 'Recepción', icono: ConciergeBell },
   { ruta: '/mascotas', nombre: 'Mascotas', icono: UsersRound },
+  { ruta: '/vacunas', nombre: 'Vacunas', icono: Syringe },
+  { ruta: '/mostrador', nombre: 'Mostrador', icono: ShoppingBasket },
+  { ruta: '/productos', nombre: 'Productos', icono: Package },
   { ruta: '/profesionales', nombre: 'Veterinarios', icono: Stethoscope, soloAdmin: true },
   { ruta: '/reportes', nombre: 'Reportes', icono: ChartColumn, soloAdmin: true },
 ];
 
-function Enlace({ ruta, nombre, icono: Icono }: Omit<(typeof SECCIONES)[number], 'soloAdmin'>) {
+function Enlace({ ruta, nombre, icono: Icono, aviso, textoAviso = 'dosis vencidas' }: Omit<(typeof SECCIONES)[number], 'soloAdmin'> & { aviso?: number; textoAviso?: string }) {
   return (
     <NavLink
       to={ruta}
@@ -38,6 +43,11 @@ function Enlace({ ruta, nombre, icono: Icono }: Omit<(typeof SECCIONES)[number],
     >
       <Icono className="size-[19px]" strokeWidth={1.8} aria-hidden="true" />
       {nombre}
+      {aviso ? (
+        <span className="numeros ml-auto rounded-full bg-rojo px-2 py-0.5 text-[12px] font-semibold text-white" title={`${aviso} ${textoAviso}`} aria-label={`${aviso} ${textoAviso}`}>
+          {aviso}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -46,6 +56,8 @@ export function BarraLateral() {
   const veterinaria = useVeterinaria();
   const { usuario, esAdmin } = useUsuario();
   const bloquear = useBloquear();
+  const vencidas = useVencidas();
+  const paraReponer = useParaReponer();
   return (
     <aside className="flex h-full w-[236px] shrink-0 flex-col border-r border-linea bg-lateral px-4 py-5">
       <div className="flex items-center gap-3 px-1">
@@ -57,7 +69,7 @@ export function BarraLateral() {
       </div>
       <nav aria-label="Secciones" className="mt-8 flex flex-col gap-1">
         {SECCIONES.filter((s) => !s.soloAdmin || esAdmin).map((s) => (
-          <Enlace key={s.ruta} ruta={s.ruta} nombre={s.nombre} icono={s.icono} />
+          <Enlace key={s.ruta} ruta={s.ruta} nombre={s.nombre} icono={s.icono} aviso={s.ruta === '/vacunas' ? vencidas.data : s.ruta === '/productos' ? paraReponer.data : undefined} textoAviso={s.ruta === '/productos' ? 'productos para reponer' : undefined} />
         ))}
       </nav>
       <div className="mt-auto flex flex-col gap-3">

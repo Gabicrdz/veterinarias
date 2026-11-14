@@ -1,7 +1,13 @@
 // El contrato entre la ventana y el main: qué funciones existen, qué reciben
 // y qué devuelven. El preload lo implementa; la ventana lo usa como window.turnos.
 import type {
+  DatosAplicacion,
+  DatosBuscarProductos,
+  DatosMovimiento,
+  DatosProducto,
+  DatosVenta,
   DatosBloqueo,
+  DatosPendientes,
   DatosBuscarDuenos,
   DatosBuscarMascotas,
   DatosCobro,
@@ -18,6 +24,8 @@ import type {
 import type { EstadoTurno } from './agenda';
 import type {
   Agenda,
+  Aplicacion,
+  DosisPendiente,
   Bloqueo,
   BloqueoCreado,
   Consulta,
@@ -29,6 +37,9 @@ import type {
   InfoSistema,
   Dueno,
   Mascota,
+  MovimientoStock,
+  Producto,
+  VentasDelDia,
   Profesional,
   Reporte,
   Respuesta,
@@ -92,6 +103,35 @@ export interface ApiTurnos {
     /** Guarda las notas de la consulta y deja el turno como atendido. */
     guardar(datos: DatosConsulta): Promise<Respuesta<number>>;
   };
+  vacunas: {
+    /** El carnet de la mascota. */
+    carnet(mascotaId: number): Promise<Respuesta<Aplicacion[]>>;
+    registrar(datos: DatosAplicacion): Promise<Respuesta<number>>;
+    anular(id: number): Promise<Respuesta<null>>;
+    /** Dosis vencidas y las que tocan en los próximos días. */
+    pendientes(filtro: DatosPendientes): Promise<Respuesta<DosisPendiente[]>>;
+    /** Cuántas dosis están vencidas (para el número del menú). */
+    vencidas(): Promise<Respuesta<number>>;
+    /** Abre WhatsApp con el aviso ya escrito y anota que se avisó. */
+    avisar(aplicacionId: number): Promise<Respuesta<null>>;
+  };
+  productos: {
+    buscar(filtro: DatosBuscarProductos): Promise<Respuesta<Producto[]>>;
+    /** Solo administración: alta y edición (el stock se mueve con `movimiento`, no desde acá). */
+    guardar(datos: DatosProducto): Promise<Respuesta<number>>;
+    /** Solo administración: baja y alta lógica. */
+    cambiarActivo(id: number, activo: boolean): Promise<Respuesta<null>>;
+    /** Entrada por compra (cualquiera); merma y ajuste por conteo (solo administración). */
+    movimiento(datos: DatosMovimiento): Promise<Respuesta<null>>;
+    movimientos(productoId: number): Promise<Respuesta<MovimientoStock[]>>;
+    /** Cuántos productos están con stock bajo o sin stock (para el número del menú). */
+    paraReponer(): Promise<Respuesta<number>>;
+  };
+  ventas: {
+    registrar(datos: DatosVenta): Promise<Respuesta<number>>;
+    anular(id: number): Promise<Respuesta<null>>;
+    delDia(fecha: string): Promise<Respuesta<VentasDelDia>>;
+  };
   cobros: {
     registrar(datos: DatosCobro): Promise<Respuesta<number>>;
     anular(id: number): Promise<Respuesta<null>>;
@@ -100,6 +140,7 @@ export interface ApiTurnos {
     obtener(): Promise<Respuesta<Veterinaria>>;
     guardar(datos: DatosVeterinaria): Promise<Respuesta<null>>;
     guardarMensaje(mensaje: string): Promise<Respuesta<null>>;
+    guardarMensajeVacuna(mensaje: string): Promise<Respuesta<null>>;
   };
   /** Solo administración. */
   reportes: {
@@ -123,6 +164,10 @@ export interface ApiTurnos {
     cargarEjemplo(): Promise<Respuesta<ResultadoEjemplo>>;
     /** Carga turnos de ejemplo (2 semanas atrás y 2 adelante), solo si no hay turnos. */
     cargarTurnosEjemplo(): Promise<Respuesta<number>>;
+    /** Carga carnets de vacunación de ejemplo, solo si todavía no hay vacunas. Devuelve cuántas aplicaciones cargó. */
+    cargarVacunasEjemplo(): Promise<Respuesta<number>>;
+    /** Carga productos con stock y ventas de ejemplo, solo si todavía no hay productos. Devuelve cuántas ventas cargó. */
+    cargarProductosEjemplo(): Promise<Respuesta<number>>;
   };
 }
 
@@ -155,11 +200,27 @@ export const CANALES = {
   turnosRecordar: 'turnos:recordar',
   consultasHistoria: 'consultas:historia',
   consultasGuardar: 'consultas:guardar',
+  vacunasCarnet: 'vacunas:carnet',
+  vacunasRegistrar: 'vacunas:registrar',
+  vacunasAnular: 'vacunas:anular',
+  vacunasPendientes: 'vacunas:pendientes',
+  vacunasVencidas: 'vacunas:vencidas',
+  vacunasAvisar: 'vacunas:avisar',
+  productosBuscar: 'productos:buscar',
+  productosGuardar: 'productos:guardar',
+  productosActivo: 'productos:activo',
+  productosMovimiento: 'productos:movimiento',
+  productosMovimientos: 'productos:movimientos',
+  productosParaReponer: 'productos:para-reponer',
+  ventasRegistrar: 'ventas:registrar',
+  ventasAnular: 'ventas:anular',
+  ventasDelDia: 'ventas:del-dia',
   cobrosRegistrar: 'cobros:registrar',
   cobrosAnular: 'cobros:anular',
   veterinariaObtener: 'veterinaria:obtener',
   veterinariaGuardar: 'veterinaria:guardar',
   veterinariaMensaje: 'veterinaria:mensaje',
+  veterinariaMensajeVacuna: 'veterinaria:mensaje-vacuna',
   sistemaInfo: 'sistema:info',
   sistemaResumen: 'sistema:resumen',
   sistemaEjemplo: 'sistema:ejemplo',
@@ -171,4 +232,6 @@ export const CANALES = {
   copiasRestaurar: 'copias:restaurar',
   copiasAbrirCarpeta: 'copias:abrir-carpeta',
   sistemaEjemploTurnos: 'sistema:ejemplo-turnos',
+  sistemaEjemploVacunas: 'sistema:ejemplo-vacunas',
+  sistemaEjemploProductos: 'sistema:ejemplo-productos',
 } as const;

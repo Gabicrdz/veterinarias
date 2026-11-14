@@ -4,7 +4,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarPlus, NotebookText, Search, UserRound, X } from 'lucide-react';
+import { CalendarPlus, NotebookText, Search, Syringe, UserRound, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { ESPECIES, NOMBRE_ESPECIE, esquemaMascota, type DatosMascota } from '@compartido/esquemas';
 import type { Dueno, Mascota } from '@compartido/tipos';
@@ -21,6 +21,8 @@ import { CLAVES, useAccion, useDemorado } from '@/features/comun/consultas';
 import { dniConPuntos } from '@/features/comun/encabezado';
 import { TurnosDeLaMascota } from '@/features/agenda/turnos-de-la-mascota';
 import { DialogoHistoria } from '@/features/consulta/historia';
+import { DialogoAplicacion } from '@/features/vacunas/dialogo-aplicacion';
+import { DialogoCarnet } from '@/features/vacunas/dialogo-carnet';
 import { useUsuario } from '@/features/sesion/consultas';
 
 /** Los errores se buscan por el nombre del campo; los del dueño llevan el prefijo "dueno.". */
@@ -65,6 +67,8 @@ export function DialogoMascota({ mascota, alCerrar, sugerencia = '', alGuardar }
   const navegar = useNavigate();
   const { veClinica } = useUsuario();
   const [historia, setHistoria] = useState(false);
+  const [carnet, setCarnet] = useState(false);
+  const [registrarVacuna, setRegistrarVacuna] = useState(false);
   const [f, setF] = useState<Formulario>(VACIO);
   const [errores, setErrores] = useState<Errores>({});
   const existente = mascota && mascota !== 'nuevo' ? mascota : null;
@@ -257,6 +261,10 @@ export function DialogoMascota({ mascota, alCerrar, sugerencia = '', alGuardar }
                     Turnos
                   </h3>
                   <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setCarnet(true)}>
+                      <Syringe aria-hidden="true" />
+                      Carnet de vacunas
+                    </Button>
                     {veClinica && (
                       <Button size="sm" variant="outline" onClick={() => setHistoria(true)}>
                         <NotebookText aria-hidden="true" />
@@ -280,6 +288,8 @@ export function DialogoMascota({ mascota, alCerrar, sugerencia = '', alGuardar }
                 </div>
                 <TurnosDeLaMascota mascotaId={existente.id} />
                 <DialogoHistoria mascota={historia ? { id: existente.id, nombre: nombreCompleto } : null} alCerrar={() => setHistoria(false)} />
+                <DialogoCarnet mascota={carnet ? { id: existente.id, nombre: existente.nombre, especie: existente.especie } : null} alCerrar={() => setCarnet(false)} alRegistrar={() => setRegistrarVacuna(true)} />
+                <DialogoAplicacion mascota={registrarVacuna ? { id: existente.id, nombre: existente.nombre, especie: existente.especie } : null} alCerrar={() => setRegistrarVacuna(false)} />
               </section>
             )}
           </DialogBody>
