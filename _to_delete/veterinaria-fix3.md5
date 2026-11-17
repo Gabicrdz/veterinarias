@@ -1,7 +1,0 @@
-daf6530c6d366a7b4215527c2060a0f6  pruebas/vacunas.test.ts
-188e91373c9b8147930f0b29d571977a  src/compartido/api.ts
-7f6eb74719f186ee38f2e72e9e20c35c  src/main/ipc.ts
-80000e52ccba66702edc2466194919c9  src/main/servicios/ejemplo.ts
-a9a8143eac332ce8f4120135f323c0a0  src/preload/preload.ts
-c85698289c50b210238a9588fb410fa8  src/renderer/features/vacunas/consultas-vacunas.ts
-f35d475da4a8fcf400a9c27c72d0bbc2  src/renderer/features/vacunas/pagina-vacunas.tsx

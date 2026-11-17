@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 
 # Electron-Forge
 out/
+
+# Copias temporales de trabajo (no van al repositorio)
+_to_delete/
+_para-borrar/
